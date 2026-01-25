@@ -1,0 +1,74 @@
+syntax = "proto3";
+package chadbot;
+option go_package = "github.com/fipso/chadbot/gen/chadbot";
+
+import "chadbot/skill.proto";
+import "chadbot/event.proto";
+import "chadbot/storage.proto";
+import "chadbot/chat.proto";
+import "chadbot/config.proto";
+
+// Plugin service for bidirectional communication
+service PluginService {
+  // Bidirectional stream for plugin lifecycle
+  rpc Connect(stream PluginMessage) returns (stream BackendMessage);
+}
+
+// Messages from plugin to backend
+message PluginMessage {
+  oneof payload {
+    RegisterRequest register = 1;
+    SkillRegister skill_register = 2;
+    EventSubscribe event_subscribe = 3;
+    EventEmit event_emit = 4;
+    SkillResponse skill_response = 5;
+    StorageRequest storage_request = 6;
+    // Chat service (reuses web UI logic)
+    ChatGetOrCreateRequest chat_get_or_create = 7;
+    ChatAddMessageRequest chat_add_message = 8;
+    ChatLLMRequest chat_llm_request = 9;
+    ChatGetMessagesRequest chat_get_messages = 10;
+    // Config
+    ConfigSchema config_schema = 11;
+    ConfigGetRequest config_get = 12;
+  }
+}
+
+// Messages from backend to plugin
+message BackendMessage {
+  oneof payload {
+    RegisterResponse register_response = 1;
+    SkillInvoke skill_invoke = 2;
+    EventDispatch event_dispatch = 3;
+    Error error = 4;
+    StorageResponse storage_response = 5;
+    // Chat service responses
+    ChatGetOrCreateResponse chat_get_or_create_response = 6;
+    ChatAddMessageResponse chat_add_message_response = 7;
+    ChatLLMResponse chat_llm_response = 8;
+    ChatGetMessagesResponse chat_get_messages_response = 9;
+    // Config
+    ConfigGetResponse config_get_response = 10;
+    ConfigChanged config_changed = 11;
+  }
+}
+
+// Plugin registration
+message RegisterRequest {
+  string name = 1;
+  string version = 2;
+  string description = 3;
+}
+
+message RegisterResponse {
+  string plugin_id = 1;
+  bool success = 2;
+  string message = 3;
+}
+
+// Error message
+message Error {
+  int32 code = 1;
+  string message = 2;
+  string request_id = 3;
+}

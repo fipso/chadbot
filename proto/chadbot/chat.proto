@@ -1,0 +1,76 @@
+syntax = "proto3";
+package chadbot;
+option go_package = "github.com/fipso/chadbot/gen/chadbot";
+
+// Chat service requests from plugins - reuses same logic as web UI
+
+// Request to create or get an existing chat
+message ChatGetOrCreateRequest {
+  string request_id = 1;
+  string platform = 2;     // "whatsapp", "telegram", etc.
+  string linked_id = 3;    // External chat ID (e.g., WhatsApp JID)
+  string name = 4;         // Chat name
+  string user_id = 5;      // Optional user ID
+}
+
+message ChatGetOrCreateResponse {
+  string request_id = 1;
+  bool success = 2;
+  string error = 3;
+  string chat_id = 4;
+  string name = 5;
+  bool created = 6;      // True if chat was newly created, false if already existed
+}
+
+// Request to add a message to a chat
+message ChatAddMessageRequest {
+  string request_id = 1;
+  string chat_id = 2;
+  string role = 3;         // "user" or "assistant"
+  string content = 4;
+}
+
+message ChatAddMessageResponse {
+  string request_id = 1;
+  bool success = 2;
+  string error = 3;
+  string message_id = 4;
+}
+
+// Request LLM response for a chat (uses chat history)
+message ChatLLMRequest {
+  string request_id = 1;
+  string chat_id = 2;
+  string provider = 3;     // Optional: specific LLM provider
+}
+
+message ChatLLMResponse {
+  string request_id = 1;
+  bool success = 2;
+  string error = 3;
+  string content = 4;      // LLM response content
+  string message_id = 5;   // Saved message ID
+}
+
+// Get chat history
+message ChatGetMessagesRequest {
+  string request_id = 1;
+  string chat_id = 2;
+  int32 limit = 3;         // Optional limit
+}
+
+message ChatGetMessagesResponse {
+  string request_id = 1;
+  bool success = 2;
+  string error = 3;
+  repeated ChatMessage messages = 4;
+}
+
+// Chat message in responses
+message ChatMessage {
+  string id = 1;
+  string chat_id = 2;
+  string role = 3;
+  string content = 4;
+  string created_at = 5;
+}

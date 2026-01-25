@@ -1,0 +1,86 @@
+syntax = "proto3";
+package chadbot;
+option go_package = "github.com/fipso/chadbot/gen/chadbot";
+
+// Storage request from plugin to backend
+message StorageRequest {
+  string request_id = 1;
+  oneof operation {
+    CreateTableRequest create_table = 2;
+    DropTableRequest drop_table = 3;
+    InsertRequest insert = 4;
+    UpdateRequest update = 5;
+    DeleteRequest delete = 6;
+    QueryRequest query = 7;
+  }
+}
+
+// Storage response from backend to plugin
+message StorageResponse {
+  string request_id = 1;
+  bool success = 2;
+  string error = 3;
+  repeated Row rows = 4;  // For query results
+  int64 affected_rows = 5;  // For insert/update/delete
+  int64 last_insert_id = 6;  // For insert
+}
+
+// Table column definition
+message ColumnDef {
+  string name = 1;
+  string type = 2;  // TEXT, INTEGER, REAL, BLOB
+  bool primary_key = 3;
+  bool not_null = 4;
+  bool unique = 5;
+  string default_value = 6;
+}
+
+// Create table request
+message CreateTableRequest {
+  string table_name = 1;  // Will be prefixed with plugin namespace
+  repeated ColumnDef columns = 2;
+  bool if_not_exists = 3;
+}
+
+// Drop table request
+message DropTableRequest {
+  string table_name = 1;
+  bool if_exists = 2;
+}
+
+// Insert request
+message InsertRequest {
+  string table_name = 1;
+  map<string, string> values = 2;  // Column -> value
+}
+
+// Update request
+message UpdateRequest {
+  string table_name = 1;
+  map<string, string> values = 2;  // Column -> value
+  string where_clause = 3;  // SQL WHERE clause (without WHERE keyword)
+  repeated string where_args = 4;  // Arguments for placeholders
+}
+
+// Delete request
+message DeleteRequest {
+  string table_name = 1;
+  string where_clause = 2;
+  repeated string where_args = 3;
+}
+
+// Query request
+message QueryRequest {
+  string table_name = 1;
+  repeated string columns = 2;  // Empty = all columns
+  string where_clause = 3;
+  repeated string where_args = 4;
+  string order_by = 5;
+  int32 limit = 6;
+  int32 offset = 7;
+}
+
+// Row in query result
+message Row {
+  map<string, string> values = 1;
+}

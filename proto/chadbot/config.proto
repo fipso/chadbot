@@ -1,0 +1,66 @@
+syntax = "proto3";
+package chadbot;
+option go_package = "github.com/fipso/chadbot/gen/chadbot";
+
+// Plugin configuration system
+
+// Config field types
+enum ConfigFieldType {
+  CONFIG_FIELD_TYPE_UNSPECIFIED = 0;
+  CONFIG_FIELD_TYPE_BOOL = 1;
+  CONFIG_FIELD_TYPE_STRING = 2;
+  CONFIG_FIELD_TYPE_NUMBER = 3;
+}
+
+// Config field definition (schema)
+message ConfigField {
+  string key = 1;
+  string label = 2;           // Display label
+  string description = 3;     // Help text
+  ConfigFieldType type = 4;
+  string default_value = 5;   // Default value as string
+}
+
+// Plugin config schema registration
+message ConfigSchema {
+  repeated ConfigField fields = 1;
+}
+
+// Current config values
+message ConfigValues {
+  map<string, string> values = 1;
+}
+
+// Request to get plugin config
+message ConfigGetRequest {
+  string request_id = 1;
+  string plugin_id = 2;       // Empty = own config
+}
+
+message ConfigGetResponse {
+  string request_id = 1;
+  bool success = 2;
+  string error = 3;
+  ConfigValues config = 4;
+}
+
+// Request to set plugin config (from web UI via backend)
+message ConfigSetRequest {
+  string request_id = 1;
+  string plugin_id = 2;
+  string key = 3;
+  string value = 4;
+}
+
+message ConfigSetResponse {
+  string request_id = 1;
+  bool success = 2;
+  string error = 3;
+}
+
+// Config changed notification (backend -> plugin)
+message ConfigChanged {
+  string key = 1;
+  string value = 2;
+  ConfigValues all_values = 3;
+}

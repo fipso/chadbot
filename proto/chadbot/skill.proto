@@ -1,0 +1,44 @@
+syntax = "proto3";
+package chadbot;
+option go_package = "github.com/fipso/chadbot/gen/chadbot";
+
+// Skill registration from plugin
+message SkillRegister {
+  repeated Skill skills = 1;
+}
+
+// Skill definition for LLM function calling
+message Skill {
+  string name = 1;
+  string description = 2;
+  repeated SkillParameter parameters = 3;
+}
+
+message SkillParameter {
+  string name = 1;
+  string type = 2; // string, number, boolean, object, array
+  string description = 3;
+  bool required = 4;
+}
+
+// Skill invocation from backend to plugin
+message SkillInvoke {
+  string request_id = 1;
+  string skill_name = 2;
+  map<string, string> arguments = 3;
+  InvocationContext context = 4;
+}
+
+message InvocationContext {
+  string chat_id = 1;
+  string user_id = 2;
+  string platform = 3;
+}
+
+// Skill response from plugin to backend
+message SkillResponse {
+  string request_id = 1;
+  bool success = 2;
+  string result = 3;
+  string error = 4;
+}

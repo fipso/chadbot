@@ -1,0 +1,39 @@
+module github.com/fipso/chadbot
+
+go 1.25.5
+
+require (
+	github.com/google/uuid v1.6.0
+	github.com/gorilla/websocket v1.5.3
+	github.com/mattn/go-sqlite3 v1.14.33
+	github.com/mdp/qrterminal/v3 v3.2.1
+	go.mau.fi/whatsmeow v0.0.0-20260123225751-89be06b020db
+	google.golang.org/grpc v1.78.0
+	google.golang.org/protobuf v1.36.11
+	gorm.io/driver/sqlite v1.6.0
+	gorm.io/gorm v1.31.1
+)
+
+require (
+	filippo.io/edwards25519 v1.1.0 // indirect
+	github.com/beeper/argo-go v1.1.2 // indirect
+	github.com/coder/websocket v1.8.14 // indirect
+	github.com/elliotchance/orderedmap/v3 v3.1.0 // indirect
+	github.com/jinzhu/inflection v1.0.0 // indirect
+	github.com/jinzhu/now v1.1.5 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
+	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/petermattis/goid v0.0.0-20260113132338-7c7de50cc741 // indirect
+	github.com/rs/zerolog v1.34.0 // indirect
+	github.com/vektah/gqlparser/v2 v2.5.27 // indirect
+	go.mau.fi/libsignal v0.2.1 // indirect
+	go.mau.fi/util v0.9.5 // indirect
+	golang.org/x/crypto v0.47.0 // indirect
+	golang.org/x/exp v0.0.0-20260112195511-716be5621a96 // indirect
+	golang.org/x/net v0.49.0 // indirect
+	golang.org/x/sys v0.40.0 // indirect
+	golang.org/x/term v0.39.0 // indirect
+	golang.org/x/text v0.33.0 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20251029180050-ab9386a59fda // indirect
+	rsc.io/qr v0.2.0 // indirect
+)
