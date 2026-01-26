@@ -2,6 +2,7 @@
 import { ref, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
+import { ChatLineRound, Plus, Setting, Delete, Edit } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const chatStore = useChatStore()
@@ -43,216 +44,235 @@ function handleKeydown(e: KeyboardEvent) {
 <template>
   <aside class="sidebar">
     <div class="sidebar-header">
-      <h1>Chadbot</h1>
-      <span class="status" :class="{ connected: chatStore.isConnected }">
-        {{ chatStore.isConnected ? 'Connected' : 'Disconnected' }}
-      </span>
+      <div class="logo">
+        <el-icon :size="24"><ChatLineRound /></el-icon>
+        <span class="logo-text">Chadbot</span>
+      </div>
+      <el-tag
+        :type="chatStore.isConnected ? 'success' : 'danger'"
+        size="small"
+        effect="dark"
+      >
+        {{ chatStore.isConnected ? 'Connected' : 'Offline' }}
+      </el-tag>
     </div>
 
-    <button class="new-chat-btn" @click="chatStore.createChat()">
-      + New Chat
-    </button>
+    <div class="sidebar-actions">
+      <el-button type="primary" class="new-chat-btn" @click="chatStore.createChat()">
+        <el-icon><Plus /></el-icon>
+        New Chat
+      </el-button>
 
-    <button class="status-btn" @click="router.push('/status')">
-      System Status
-    </button>
+      <el-button class="status-btn" @click="router.push('/status')">
+        <el-icon><Setting /></el-icon>
+        System Status
+      </el-button>
+    </div>
 
     <div v-if="chatStore.providers.length > 0" class="model-selector">
-      <label>Model</label>
-      <select
-        :value="chatStore.selectedProvider"
-        @change="(e) => chatStore.setProvider((e.target as HTMLSelectElement).value)"
+      <el-select
+        :model-value="chatStore.selectedProvider"
+        @change="(val: string) => chatStore.setProvider(val)"
+        placeholder="Select Model"
+        size="default"
       >
-        <option
+        <el-option
           v-for="provider in chatStore.providers"
           :key="provider.name"
+          :label="`${provider.name}${provider.is_default ? ' (default)' : ''}`"
           :value="provider.name"
-        >
-          {{ provider.name }}{{ provider.is_default ? ' (default)' : '' }}
-        </option>
-      </select>
+        />
+      </el-select>
     </div>
 
+    <el-divider />
+
     <nav class="chat-list">
-      <div
-        v-for="chat in chatStore.chatList"
-        :key="chat.id"
-        class="chat-item"
-        :class="{ active: chat.id === chatStore.activeChatId }"
-        @click="chatStore.setActiveChat(chat.id)"
-      >
-        <input
-          v-if="editingChatId === chat.id"
-          ref="editInput"
-          v-model="editingName"
-          class="chat-name-input"
-          @blur="finishEditing"
-          @keydown="handleKeydown"
-          @click.stop
-        />
-        <span
-          v-else
-          class="chat-name"
-          @dblclick.stop="startEditing(chat.id, chat.name)"
-          title="Double-click to rename"
+      <el-scrollbar>
+        <div
+          v-for="chat in chatStore.chatList"
+          :key="chat.id"
+          class="chat-item"
+          :class="{ active: chat.id === chatStore.activeChatId }"
+          @click="chatStore.setActiveChat(chat.id)"
         >
-          {{ chat.name }}
-        </span>
-        <button
-          class="delete-btn"
-          @click.stop="chatStore.deleteChat(chat.id)"
-          title="Delete chat"
-        >
-          ×
-        </button>
-      </div>
+          <el-input
+            v-if="editingChatId === chat.id"
+            ref="editInput"
+            v-model="editingName"
+            size="small"
+            @blur="finishEditing"
+            @keydown="handleKeydown"
+            @click.stop
+          />
+          <span
+            v-else
+            class="chat-name"
+            @dblclick.stop="startEditing(chat.id, chat.name)"
+          >
+            <el-icon class="chat-icon"><ChatLineRound /></el-icon>
+            {{ chat.name }}
+          </span>
+          <div class="chat-actions">
+            <el-button
+              text
+              size="small"
+              class="action-btn"
+              @click.stop="startEditing(chat.id, chat.name)"
+            >
+              <el-icon><Edit /></el-icon>
+            </el-button>
+            <el-popconfirm
+              title="Delete this chat?"
+              confirm-button-text="Delete"
+              cancel-button-text="Cancel"
+              @confirm="chatStore.deleteChat(chat.id)"
+            >
+              <template #reference>
+                <el-button
+                  text
+                  size="small"
+                  class="action-btn delete"
+                  @click.stop
+                >
+                  <el-icon><Delete /></el-icon>
+                </el-button>
+              </template>
+            </el-popconfirm>
+          </div>
+        </div>
+      </el-scrollbar>
     </nav>
   </aside>
 </template>
 
 <style scoped>
 .sidebar {
-  width: 260px;
-  background: var(--bg-secondary);
-  border-right: 1px solid var(--bg-tertiary);
+  width: 280px;
+  background: var(--el-bg-color);
+  border-right: 1px solid var(--el-border-color);
   display: flex;
   flex-direction: column;
-  padding: 1rem;
+  padding: 16px;
 }
 
 .sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 1rem;
+  margin-bottom: 16px;
 }
 
-.sidebar-header h1 {
-  font-size: 1.25rem;
+.logo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.logo-text {
+  font-size: 18px;
   font-weight: 600;
+  background: linear-gradient(135deg, var(--el-color-primary), var(--el-color-primary-light-3));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
 }
 
-.status {
-  font-size: 0.75rem;
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  background: #ff4444;
-  color: white;
-}
-
-.status.connected {
-  background: #44bb44;
+.sidebar-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
 }
 
 .new-chat-btn {
   width: 100%;
-  margin-bottom: 0.5rem;
 }
 
 .status-btn {
   width: 100%;
-  margin-bottom: 1rem;
-  background: var(--bg-tertiary);
-  color: var(--text-secondary);
-}
-
-.status-btn:hover {
-  background: var(--bg-primary);
-  color: var(--text-primary);
 }
 
 .model-selector {
-  margin-bottom: 1rem;
+  margin-bottom: 8px;
 }
 
-.model-selector label {
-  display: block;
-  font-size: 0.75rem;
-  color: var(--text-secondary);
-  margin-bottom: 0.25rem;
-}
-
-.model-selector select {
+.model-selector .el-select {
   width: 100%;
-  padding: 0.5rem;
-  background: var(--bg-tertiary);
-  color: var(--text-primary);
-  border: 1px solid var(--bg-tertiary);
-  border-radius: 6px;
-  font-size: 0.875rem;
-  cursor: pointer;
 }
 
-.model-selector select:hover {
-  border-color: var(--accent);
-}
-
-.model-selector select:focus {
-  outline: none;
-  border-color: var(--accent);
+.el-divider {
+  margin: 12px 0;
 }
 
 .chat-list {
   flex: 1;
-  overflow-y: auto;
+  overflow: hidden;
+  margin: 0 -16px;
+  padding: 0 16px;
 }
 
 .chat-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0.75rem;
+  padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
-  margin-bottom: 0.25rem;
-  transition: background 0.2s;
+  margin-bottom: 4px;
+  transition: all 0.2s;
 }
 
 .chat-item:hover {
-  background: var(--bg-tertiary);
+  background: var(--el-fill-color-light);
 }
 
 .chat-item.active {
-  background: var(--bg-tertiary);
+  background: var(--el-fill-color);
 }
 
 .chat-name {
   flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  color: var(--el-text-color-regular);
+  font-size: 14px;
 }
 
-.chat-name-input {
-  flex: 1;
-  background: var(--bg-primary);
-  border: 1px solid var(--accent);
-  color: var(--text-primary);
-  padding: 0.25rem 0.5rem;
-  border-radius: 4px;
-  font-size: inherit;
-  min-width: 0;
+.chat-item.active .chat-name {
+  color: var(--el-text-color-primary);
 }
 
-.chat-name-input:focus {
-  outline: none;
+.chat-icon {
+  flex-shrink: 0;
+  color: var(--el-text-color-secondary);
 }
 
-.delete-btn {
+.chat-actions {
+  display: flex;
+  gap: 2px;
   opacity: 0;
-  background: transparent;
-  color: var(--text-secondary);
-  padding: 0.25rem 0.5rem;
-  font-size: 1.25rem;
-  line-height: 1;
+  transition: opacity 0.2s;
 }
 
-.chat-item:hover .delete-btn {
+.chat-item:hover .chat-actions {
   opacity: 1;
 }
 
-.delete-btn:hover {
-  color: var(--accent);
-  background: transparent;
+.action-btn {
+  padding: 4px;
+  color: var(--el-text-color-secondary);
+}
+
+.action-btn:hover {
+  color: var(--el-color-primary);
+}
+
+.action-btn.delete:hover {
+  color: var(--el-color-danger);
 }
 </style>

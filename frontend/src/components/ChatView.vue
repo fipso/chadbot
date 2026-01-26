@@ -3,6 +3,7 @@ import { ref, nextTick, watch, computed } from 'vue'
 import { useChatStore } from '../stores/chat'
 import ChatMessage from './ChatMessage.vue'
 import VoiceButton from './VoiceButton.vue'
+import { Promotion } from '@element-plus/icons-vue'
 
 const chatStore = useChatStore()
 const messageInput = ref('')
@@ -54,31 +55,39 @@ function handleVoiceResult(text: string) {
         :key="message.id"
         :message="message"
       />
-      <div v-if="chatStore.isLoading" class="loading">
-        <span class="dot"></span>
-        <span class="dot"></span>
-        <span class="dot"></span>
+      <div v-if="chatStore.isLoading" class="loading-indicator">
+        <div class="typing-dots">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
       </div>
     </div>
 
     <div class="input-area">
-      <div class="input-wrapper">
-        <textarea
-          v-model="messageInput"
-          placeholder="Type a message..."
-          rows="1"
-          @keydown="handleKeydown"
-          :disabled="chatStore.isLoading"
-        ></textarea>
-        <VoiceButton @result="handleVoiceResult" />
-        <button
-          class="send-btn"
-          @click="handleSend"
-          :disabled="!messageInput.trim() || chatStore.isLoading"
-        >
-          Send
-        </button>
-      </div>
+      <el-card shadow="never" class="input-card">
+        <div class="input-wrapper">
+          <el-input
+            v-model="messageInput"
+            type="textarea"
+            :autosize="{ minRows: 1, maxRows: 4 }"
+            placeholder="Type a message..."
+            :disabled="chatStore.isLoading"
+            @keydown="handleKeydown"
+            resize="none"
+          />
+          <div class="input-actions">
+            <VoiceButton @result="handleVoiceResult" />
+            <el-button
+              type="primary"
+              :icon="Promotion"
+              circle
+              :disabled="!messageInput.trim() || chatStore.isLoading"
+              @click="handleSend"
+            />
+          </div>
+        </div>
+      </el-card>
     </div>
   </div>
 </template>
@@ -89,69 +98,97 @@ function handleVoiceResult(text: string) {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  background: var(--el-bg-color-page);
 }
 
 .chat-header {
-  padding: 1rem;
-  border-bottom: 1px solid var(--bg-tertiary);
+  padding: 16px 24px;
+  border-bottom: 1px solid var(--el-border-color);
+  background: var(--el-bg-color);
 }
 
 .chat-header h2 {
-  font-size: 1.125rem;
+  font-size: 16px;
   font-weight: 500;
+  color: var(--el-text-color-primary);
+  margin: 0;
 }
 
 .messages {
   flex: 1;
   overflow-y: auto;
-  padding: 1rem;
+  padding: 24px;
   display: flex;
   flex-direction: column;
-  gap: 1rem;
+  gap: 16px;
 }
 
-.loading {
-  display: flex;
-  gap: 0.25rem;
-  padding: 1rem;
+.loading-indicator {
+  padding: 16px;
   align-self: flex-start;
 }
 
-.dot {
+.typing-dots {
+  display: flex;
+  gap: 4px;
+  padding: 12px 16px;
+  background: var(--el-fill-color);
+  border-radius: 16px;
+}
+
+.typing-dots span {
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: var(--text-secondary);
-  animation: bounce 1.4s infinite ease-in-out both;
+  background: var(--el-text-color-secondary);
+  animation: typing 1.4s infinite ease-in-out both;
 }
 
-.dot:nth-child(1) { animation-delay: -0.32s; }
-.dot:nth-child(2) { animation-delay: -0.16s; }
+.typing-dots span:nth-child(1) { animation-delay: -0.32s; }
+.typing-dots span:nth-child(2) { animation-delay: -0.16s; }
 
-@keyframes bounce {
-  0%, 80%, 100% { transform: scale(0); }
-  40% { transform: scale(1); }
+@keyframes typing {
+  0%, 80%, 100% { transform: scale(0.6); opacity: 0.5; }
+  40% { transform: scale(1); opacity: 1; }
 }
 
 .input-area {
-  padding: 1rem;
-  border-top: 1px solid var(--bg-tertiary);
+  padding: 16px 24px;
+  background: var(--el-bg-color-page);
+}
+
+.input-card {
+  background: var(--el-bg-color);
+  border-radius: 16px;
+}
+
+.input-card :deep(.el-card__body) {
+  padding: 12px 16px;
 }
 
 .input-wrapper {
   display: flex;
-  gap: 0.5rem;
   align-items: flex-end;
+  gap: 12px;
 }
 
-.input-wrapper textarea {
-  flex: 1;
-  resize: none;
-  min-height: 44px;
-  max-height: 120px;
+.input-wrapper :deep(.el-textarea__inner) {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  padding: 8px 0;
+  font-size: 15px;
+  line-height: 1.5;
 }
 
-.send-btn {
-  min-width: 80px;
+.input-wrapper :deep(.el-textarea__inner:focus) {
+  box-shadow: none;
+}
+
+.input-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
 }
 </style>
