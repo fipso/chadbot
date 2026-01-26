@@ -304,6 +304,36 @@ User-defined automation hooks with natural language instructions. Create event-d
 - `hooks_enable` - Enable a disabled hook
 - `hooks_disable` - Disable a hook without deleting it
 
+### MCP (`plugins/mcp`)
+
+MCP (Model Context Protocol) server integration. Spawn and manage MCP servers as subprocesses, invoke their tools.
+
+**Skills:**
+- `mcp_add_server` - Register a new MCP server configuration
+- `mcp_remove_server` - Remove an MCP server configuration
+- `mcp_connect` - Connect to a registered MCP server (spawn subprocess)
+- `mcp_disconnect` - Disconnect from an MCP server
+- `mcp_list_servers` - List all configured servers with connection status
+- `mcp_list_tools` - List available tools from connected servers
+- `mcp_call_tool` - Call a tool on an MCP server
+- `mcp_status` - Get overall MCP plugin status
+
+**Events emitted:**
+- `mcp.server.connected` - When an MCP server connects
+- `mcp.server.disconnected` - When an MCP server disconnects
+
+**Example usage:**
+```bash
+# Add a server
+mcp_add_server name=filesystem command=npx args='["-y","@modelcontextprotocol/server-filesystem","/tmp"]'
+
+# Connect and use
+mcp_connect name=filesystem
+mcp_list_tools server=filesystem
+mcp_call_tool server=filesystem tool=list_directory arguments='{"path":"/tmp"}'
+mcp_disconnect name=filesystem
+```
+
 ## Architecture
 
 ```
@@ -324,12 +354,12 @@ User-defined automation hooks with natural language instructions. Create event-d
 │  └────────────────────────────────────────────────────┘     │
 └───────────────────────────┬─────────────────────────────────┘
                             │ Unix Socket
-        ┌───────────────────┼───────────────────┐
-        │                   │                   │
-   ┌────────┐          ┌────────┐          ┌────────┐
-   │WhatsApp│          │  MQTT  │          │ Custom │
-   │ Plugin │          │ Plugin │          │ Plugin │
-   └────────┘          └────────┘          └────────┘
+        ┌───────────────┬───────┴───────┬───────────────┐
+        │               │               │               │
+   ┌────────┐      ┌────────┐      ┌────────┐      ┌────────┐
+   │WhatsApp│      │  MQTT  │      │  MCP   │      │ Custom │
+   │ Plugin │      │ Plugin │      │ Plugin │      │ Plugin │
+   └────────┘      └────────┘      └────────┘      └────────┘
 ```
 
 ## License
