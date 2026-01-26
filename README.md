@@ -1,5 +1,7 @@
 # Chadbot
 
+<img height="400" alt="image" src="https://github.com/user-attachments/assets/fae03a15-c716-4655-9737-810b8b8359d1" />
+
 A modular chat bot framework with plugin-based architecture, LLM integration, and multi-platform support.
 
 ## Features
