@@ -205,11 +205,26 @@ func (h *Handler) handleSkillResponse(resp *pb.SkillResponse) {
 }
 
 func (h *Handler) handleStorageRequest(pluginID string, req *pb.StorageRequest, stream pb.PluginService_ConnectServer) {
-	// Get or create plugin storage handler
-	ps, ok := h.pluginStorages[pluginID]
+	// Get plugin name for storage namespacing (persists across restarts)
+	plugin, ok := h.manager.Get(pluginID)
 	if !ok {
-		ps = storage.NewPluginStorage(pluginID)
-		h.pluginStorages[pluginID] = ps
+		stream.Send(&pb.BackendMessage{
+			Payload: &pb.BackendMessage_StorageResponse{
+				StorageResponse: &pb.StorageResponse{
+					RequestId: req.RequestId,
+					Success:   false,
+					Error:     "plugin not found",
+				},
+			},
+		})
+		return
+	}
+
+	// Get or create plugin storage handler (keyed by name for persistence)
+	ps, ok := h.pluginStorages[plugin.Name]
+	if !ok {
+		ps = storage.NewPluginStorage(plugin.Name)
+		h.pluginStorages[plugin.Name] = ps
 	}
 
 	// Process the request

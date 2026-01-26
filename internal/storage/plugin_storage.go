@@ -14,17 +14,20 @@ var ValidTableNameRegex = regexp.MustCompile(`^[a-zA-Z][a-zA-Z0-9_]*$`)
 
 // PluginStorage handles namespaced storage for plugins
 type PluginStorage struct {
-	pluginID string
-	prefix   string
+	pluginName string
+	prefix     string
 }
 
 // NewPluginStorage creates a new plugin storage handler
-func NewPluginStorage(pluginID string) *PluginStorage {
-	// Create a safe prefix from plugin ID (first 8 chars of UUID)
-	prefix := "plugin_" + strings.ReplaceAll(pluginID[:8], "-", "")
+// Uses plugin name for persistence across restarts
+func NewPluginStorage(pluginName string) *PluginStorage {
+	// Create a safe prefix from plugin name
+	safeName := strings.ReplaceAll(pluginName, "-", "_")
+	safeName = strings.ReplaceAll(safeName, " ", "_")
+	prefix := "plugin_" + safeName
 	return &PluginStorage{
-		pluginID: pluginID,
-		prefix:   prefix,
+		pluginName: pluginName,
+		prefix:     prefix,
 	}
 }
 
