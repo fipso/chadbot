@@ -45,6 +45,7 @@ type Config struct {
 	HTTPAddr     string
 	OpenAIKey    string
 	AnthropicKey string
+	ZAIKey       string
 	DefaultLLM   string
 	DBPath       string
 }
@@ -98,6 +99,9 @@ func New(config *Config) *Server {
 	}
 	if config.AnthropicKey != "" || os.Getenv("ANTHROPIC_API_KEY") != "" {
 		llmRouter.RegisterProvider(llm.NewAnthropicProvider(config.AnthropicKey, ""))
+	}
+	if config.ZAIKey != "" || os.Getenv("ZAI_API_KEY") != "" {
+		llmRouter.RegisterProvider(llm.NewZAIProvider(config.ZAIKey, ""))
 	}
 	if config.DefaultLLM != "" {
 		llmRouter.SetDefaultProvider(config.DefaultLLM)

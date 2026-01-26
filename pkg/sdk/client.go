@@ -24,11 +24,12 @@ type ConfigChangedHandler func(key, value string, allValues map[string]string)
 
 // Client is the SDK client for building plugins
 type Client struct {
-	name        string
-	version     string
-	description string
-	socket      string
-	pluginID    string
+	name          string
+	version       string
+	description   string
+	documentation string // PLUGIN.md content
+	socket        string
+	pluginID      string
 
 	conn   *grpc.ClientConn
 	client pb.PluginServiceClient
@@ -87,6 +88,13 @@ func (c *Client) WithSocket(socket string) *Client {
 	return c
 }
 
+// SetDocumentation sets the plugin documentation (PLUGIN.md content)
+// This should be called before Connect()
+func (c *Client) SetDocumentation(markdown string) *Client {
+	c.documentation = markdown
+	return c
+}
+
 // RegisterSkill registers a skill with the backend
 func (c *Client) RegisterSkill(skill *pb.Skill, handler SkillHandler) {
 	c.mu.Lock()
@@ -131,6 +139,11 @@ func (c *Client) Connect(ctx context.Context) error {
 		return err
 	}
 
+	// Send documentation if set
+	if err := c.sendDocumentation(); err != nil {
+		return err
+	}
+
 	// Register skills
 	if err := c.registerSkills(); err != nil {
 		return err
@@ -139,6 +152,26 @@ func (c *Client) Connect(ctx context.Context) error {
 	// Start message processing loop in background
 	go c.processMessages()
 
+	return nil
+}
+
+// sendDocumentation sends the plugin documentation to the backend
+func (c *Client) sendDocumentation() error {
+	if c.documentation == "" {
+		return nil
+	}
+
+	if err := c.stream.Send(&pb.PluginMessage{
+		Payload: &pb.PluginMessage_Documentation{
+			Documentation: &pb.PluginDocumentation{
+				Content: c.documentation,
+			},
+		},
+	}); err != nil {
+		return fmt.Errorf("failed to send documentation: %w", err)
+	}
+
+	log.Printf("[SDK] Documentation sent")
 	return nil
 }
 

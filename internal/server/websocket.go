@@ -553,7 +553,7 @@ func (c *WSClient) handleChatMessage(msg IncomingChatMessage) {
 }
 
 func (c *WSClient) processWithLLM(msg IncomingChatMessage) {
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	// Load chat history from database

@@ -38,6 +38,7 @@ type PluginMessage struct {
 	//	*PluginMessage_ChatGetMessages
 	//	*PluginMessage_ConfigSchema
 	//	*PluginMessage_ConfigGet
+	//	*PluginMessage_Documentation
 	Payload       isPluginMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -188,6 +189,15 @@ func (x *PluginMessage) GetConfigGet() *ConfigGetRequest {
 	return nil
 }
 
+func (x *PluginMessage) GetDocumentation() *PluginDocumentation {
+	if x != nil {
+		if x, ok := x.Payload.(*PluginMessage_Documentation); ok {
+			return x.Documentation
+		}
+	}
+	return nil
+}
+
 type isPluginMessage_Payload interface {
 	isPluginMessage_Payload()
 }
@@ -242,6 +252,11 @@ type PluginMessage_ConfigGet struct {
 	ConfigGet *ConfigGetRequest `protobuf:"bytes,12,opt,name=config_get,json=configGet,proto3,oneof"`
 }
 
+type PluginMessage_Documentation struct {
+	// Documentation
+	Documentation *PluginDocumentation `protobuf:"bytes,13,opt,name=documentation,proto3,oneof"`
+}
+
 func (*PluginMessage_Register) isPluginMessage_Payload() {}
 
 func (*PluginMessage_SkillRegister) isPluginMessage_Payload() {}
@@ -266,6 +281,53 @@ func (*PluginMessage_ConfigSchema) isPluginMessage_Payload() {}
 
 func (*PluginMessage_ConfigGet) isPluginMessage_Payload() {}
 
+func (*PluginMessage_Documentation) isPluginMessage_Payload() {}
+
+// Plugin documentation (PLUGIN.md content)
+type PluginDocumentation struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Content       string                 `protobuf:"bytes,1,opt,name=content,proto3" json:"content,omitempty"` // Markdown content
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *PluginDocumentation) Reset() {
+	*x = PluginDocumentation{}
+	mi := &file_chadbot_plugin_proto_msgTypes[1]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *PluginDocumentation) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*PluginDocumentation) ProtoMessage() {}
+
+func (x *PluginDocumentation) ProtoReflect() protoreflect.Message {
+	mi := &file_chadbot_plugin_proto_msgTypes[1]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use PluginDocumentation.ProtoReflect.Descriptor instead.
+func (*PluginDocumentation) Descriptor() ([]byte, []int) {
+	return file_chadbot_plugin_proto_rawDescGZIP(), []int{1}
+}
+
+func (x *PluginDocumentation) GetContent() string {
+	if x != nil {
+		return x.Content
+	}
+	return ""
+}
+
 // Messages from backend to plugin
 type BackendMessage struct {
 	state protoimpl.MessageState `protogen:"open.v1"`
@@ -289,7 +351,7 @@ type BackendMessage struct {
 
 func (x *BackendMessage) Reset() {
 	*x = BackendMessage{}
-	mi := &file_chadbot_plugin_proto_msgTypes[1]
+	mi := &file_chadbot_plugin_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -301,7 +363,7 @@ func (x *BackendMessage) String() string {
 func (*BackendMessage) ProtoMessage() {}
 
 func (x *BackendMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_chadbot_plugin_proto_msgTypes[1]
+	mi := &file_chadbot_plugin_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -314,7 +376,7 @@ func (x *BackendMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use BackendMessage.ProtoReflect.Descriptor instead.
 func (*BackendMessage) Descriptor() ([]byte, []int) {
-	return file_chadbot_plugin_proto_rawDescGZIP(), []int{1}
+	return file_chadbot_plugin_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *BackendMessage) GetPayload() isBackendMessage_Payload {
@@ -507,7 +569,7 @@ type RegisterRequest struct {
 
 func (x *RegisterRequest) Reset() {
 	*x = RegisterRequest{}
-	mi := &file_chadbot_plugin_proto_msgTypes[2]
+	mi := &file_chadbot_plugin_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -519,7 +581,7 @@ func (x *RegisterRequest) String() string {
 func (*RegisterRequest) ProtoMessage() {}
 
 func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chadbot_plugin_proto_msgTypes[2]
+	mi := &file_chadbot_plugin_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -532,7 +594,7 @@ func (x *RegisterRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterRequest.ProtoReflect.Descriptor instead.
 func (*RegisterRequest) Descriptor() ([]byte, []int) {
-	return file_chadbot_plugin_proto_rawDescGZIP(), []int{2}
+	return file_chadbot_plugin_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *RegisterRequest) GetName() string {
@@ -567,7 +629,7 @@ type RegisterResponse struct {
 
 func (x *RegisterResponse) Reset() {
 	*x = RegisterResponse{}
-	mi := &file_chadbot_plugin_proto_msgTypes[3]
+	mi := &file_chadbot_plugin_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -579,7 +641,7 @@ func (x *RegisterResponse) String() string {
 func (*RegisterResponse) ProtoMessage() {}
 
 func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chadbot_plugin_proto_msgTypes[3]
+	mi := &file_chadbot_plugin_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -592,7 +654,7 @@ func (x *RegisterResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use RegisterResponse.ProtoReflect.Descriptor instead.
 func (*RegisterResponse) Descriptor() ([]byte, []int) {
-	return file_chadbot_plugin_proto_rawDescGZIP(), []int{3}
+	return file_chadbot_plugin_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *RegisterResponse) GetPluginId() string {
@@ -628,7 +690,7 @@ type Error struct {
 
 func (x *Error) Reset() {
 	*x = Error{}
-	mi := &file_chadbot_plugin_proto_msgTypes[4]
+	mi := &file_chadbot_plugin_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -640,7 +702,7 @@ func (x *Error) String() string {
 func (*Error) ProtoMessage() {}
 
 func (x *Error) ProtoReflect() protoreflect.Message {
-	mi := &file_chadbot_plugin_proto_msgTypes[4]
+	mi := &file_chadbot_plugin_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -653,7 +715,7 @@ func (x *Error) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Error.ProtoReflect.Descriptor instead.
 func (*Error) Descriptor() ([]byte, []int) {
-	return file_chadbot_plugin_proto_rawDescGZIP(), []int{4}
+	return file_chadbot_plugin_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *Error) GetCode() int32 {
@@ -681,7 +743,7 @@ var File_chadbot_plugin_proto protoreflect.FileDescriptor
 
 const file_chadbot_plugin_proto_rawDesc = "" +
 	"\n" +
-	"\x14chadbot/plugin.proto\x12\achadbot\x1a\x13chadbot/skill.proto\x1a\x13chadbot/event.proto\x1a\x15chadbot/storage.proto\x1a\x12chadbot/chat.proto\x1a\x14chadbot/config.proto\"\xbb\x06\n" +
+	"\x14chadbot/plugin.proto\x12\achadbot\x1a\x13chadbot/skill.proto\x1a\x13chadbot/event.proto\x1a\x15chadbot/storage.proto\x1a\x12chadbot/chat.proto\x1a\x14chadbot/config.proto\"\x81\a\n" +
 	"\rPluginMessage\x126\n" +
 	"\bregister\x18\x01 \x01(\v2\x18.chadbot.RegisterRequestH\x00R\bregister\x12?\n" +
 	"\x0eskill_register\x18\x02 \x01(\v2\x16.chadbot.SkillRegisterH\x00R\rskillRegister\x12B\n" +
@@ -697,8 +759,11 @@ const file_chadbot_plugin_proto_rawDesc = "" +
 	" \x01(\v2\x1f.chadbot.ChatGetMessagesRequestH\x00R\x0fchatGetMessages\x12<\n" +
 	"\rconfig_schema\x18\v \x01(\v2\x15.chadbot.ConfigSchemaH\x00R\fconfigSchema\x12:\n" +
 	"\n" +
-	"config_get\x18\f \x01(\v2\x19.chadbot.ConfigGetRequestH\x00R\tconfigGetB\t\n" +
-	"\apayload\"\xc8\x06\n" +
+	"config_get\x18\f \x01(\v2\x19.chadbot.ConfigGetRequestH\x00R\tconfigGet\x12D\n" +
+	"\rdocumentation\x18\r \x01(\v2\x1c.chadbot.PluginDocumentationH\x00R\rdocumentationB\t\n" +
+	"\apayload\"/\n" +
+	"\x13PluginDocumentation\x12\x18\n" +
+	"\acontent\x18\x01 \x01(\tR\acontent\"\xc8\x06\n" +
 	"\x0eBackendMessage\x12H\n" +
 	"\x11register_response\x18\x01 \x01(\v2\x19.chadbot.RegisterResponseH\x00R\x10registerResponse\x129\n" +
 	"\fskill_invoke\x18\x02 \x01(\v2\x14.chadbot.SkillInvokeH\x00R\vskillInvoke\x12?\n" +
@@ -742,65 +807,67 @@ func file_chadbot_plugin_proto_rawDescGZIP() []byte {
 	return file_chadbot_plugin_proto_rawDescData
 }
 
-var file_chadbot_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_chadbot_plugin_proto_msgTypes = make([]protoimpl.MessageInfo, 6)
 var file_chadbot_plugin_proto_goTypes = []any{
 	(*PluginMessage)(nil),           // 0: chadbot.PluginMessage
-	(*BackendMessage)(nil),          // 1: chadbot.BackendMessage
-	(*RegisterRequest)(nil),         // 2: chadbot.RegisterRequest
-	(*RegisterResponse)(nil),        // 3: chadbot.RegisterResponse
-	(*Error)(nil),                   // 4: chadbot.Error
-	(*SkillRegister)(nil),           // 5: chadbot.SkillRegister
-	(*EventSubscribe)(nil),          // 6: chadbot.EventSubscribe
-	(*EventEmit)(nil),               // 7: chadbot.EventEmit
-	(*SkillResponse)(nil),           // 8: chadbot.SkillResponse
-	(*StorageRequest)(nil),          // 9: chadbot.StorageRequest
-	(*ChatGetOrCreateRequest)(nil),  // 10: chadbot.ChatGetOrCreateRequest
-	(*ChatAddMessageRequest)(nil),   // 11: chadbot.ChatAddMessageRequest
-	(*ChatLLMRequest)(nil),          // 12: chadbot.ChatLLMRequest
-	(*ChatGetMessagesRequest)(nil),  // 13: chadbot.ChatGetMessagesRequest
-	(*ConfigSchema)(nil),            // 14: chadbot.ConfigSchema
-	(*ConfigGetRequest)(nil),        // 15: chadbot.ConfigGetRequest
-	(*SkillInvoke)(nil),             // 16: chadbot.SkillInvoke
-	(*EventDispatch)(nil),           // 17: chadbot.EventDispatch
-	(*StorageResponse)(nil),         // 18: chadbot.StorageResponse
-	(*ChatGetOrCreateResponse)(nil), // 19: chadbot.ChatGetOrCreateResponse
-	(*ChatAddMessageResponse)(nil),  // 20: chadbot.ChatAddMessageResponse
-	(*ChatLLMResponse)(nil),         // 21: chadbot.ChatLLMResponse
-	(*ChatGetMessagesResponse)(nil), // 22: chadbot.ChatGetMessagesResponse
-	(*ConfigGetResponse)(nil),       // 23: chadbot.ConfigGetResponse
-	(*ConfigChanged)(nil),           // 24: chadbot.ConfigChanged
+	(*PluginDocumentation)(nil),     // 1: chadbot.PluginDocumentation
+	(*BackendMessage)(nil),          // 2: chadbot.BackendMessage
+	(*RegisterRequest)(nil),         // 3: chadbot.RegisterRequest
+	(*RegisterResponse)(nil),        // 4: chadbot.RegisterResponse
+	(*Error)(nil),                   // 5: chadbot.Error
+	(*SkillRegister)(nil),           // 6: chadbot.SkillRegister
+	(*EventSubscribe)(nil),          // 7: chadbot.EventSubscribe
+	(*EventEmit)(nil),               // 8: chadbot.EventEmit
+	(*SkillResponse)(nil),           // 9: chadbot.SkillResponse
+	(*StorageRequest)(nil),          // 10: chadbot.StorageRequest
+	(*ChatGetOrCreateRequest)(nil),  // 11: chadbot.ChatGetOrCreateRequest
+	(*ChatAddMessageRequest)(nil),   // 12: chadbot.ChatAddMessageRequest
+	(*ChatLLMRequest)(nil),          // 13: chadbot.ChatLLMRequest
+	(*ChatGetMessagesRequest)(nil),  // 14: chadbot.ChatGetMessagesRequest
+	(*ConfigSchema)(nil),            // 15: chadbot.ConfigSchema
+	(*ConfigGetRequest)(nil),        // 16: chadbot.ConfigGetRequest
+	(*SkillInvoke)(nil),             // 17: chadbot.SkillInvoke
+	(*EventDispatch)(nil),           // 18: chadbot.EventDispatch
+	(*StorageResponse)(nil),         // 19: chadbot.StorageResponse
+	(*ChatGetOrCreateResponse)(nil), // 20: chadbot.ChatGetOrCreateResponse
+	(*ChatAddMessageResponse)(nil),  // 21: chadbot.ChatAddMessageResponse
+	(*ChatLLMResponse)(nil),         // 22: chadbot.ChatLLMResponse
+	(*ChatGetMessagesResponse)(nil), // 23: chadbot.ChatGetMessagesResponse
+	(*ConfigGetResponse)(nil),       // 24: chadbot.ConfigGetResponse
+	(*ConfigChanged)(nil),           // 25: chadbot.ConfigChanged
 }
 var file_chadbot_plugin_proto_depIdxs = []int32{
-	2,  // 0: chadbot.PluginMessage.register:type_name -> chadbot.RegisterRequest
-	5,  // 1: chadbot.PluginMessage.skill_register:type_name -> chadbot.SkillRegister
-	6,  // 2: chadbot.PluginMessage.event_subscribe:type_name -> chadbot.EventSubscribe
-	7,  // 3: chadbot.PluginMessage.event_emit:type_name -> chadbot.EventEmit
-	8,  // 4: chadbot.PluginMessage.skill_response:type_name -> chadbot.SkillResponse
-	9,  // 5: chadbot.PluginMessage.storage_request:type_name -> chadbot.StorageRequest
-	10, // 6: chadbot.PluginMessage.chat_get_or_create:type_name -> chadbot.ChatGetOrCreateRequest
-	11, // 7: chadbot.PluginMessage.chat_add_message:type_name -> chadbot.ChatAddMessageRequest
-	12, // 8: chadbot.PluginMessage.chat_llm_request:type_name -> chadbot.ChatLLMRequest
-	13, // 9: chadbot.PluginMessage.chat_get_messages:type_name -> chadbot.ChatGetMessagesRequest
-	14, // 10: chadbot.PluginMessage.config_schema:type_name -> chadbot.ConfigSchema
-	15, // 11: chadbot.PluginMessage.config_get:type_name -> chadbot.ConfigGetRequest
-	3,  // 12: chadbot.BackendMessage.register_response:type_name -> chadbot.RegisterResponse
-	16, // 13: chadbot.BackendMessage.skill_invoke:type_name -> chadbot.SkillInvoke
-	17, // 14: chadbot.BackendMessage.event_dispatch:type_name -> chadbot.EventDispatch
-	4,  // 15: chadbot.BackendMessage.error:type_name -> chadbot.Error
-	18, // 16: chadbot.BackendMessage.storage_response:type_name -> chadbot.StorageResponse
-	19, // 17: chadbot.BackendMessage.chat_get_or_create_response:type_name -> chadbot.ChatGetOrCreateResponse
-	20, // 18: chadbot.BackendMessage.chat_add_message_response:type_name -> chadbot.ChatAddMessageResponse
-	21, // 19: chadbot.BackendMessage.chat_llm_response:type_name -> chadbot.ChatLLMResponse
-	22, // 20: chadbot.BackendMessage.chat_get_messages_response:type_name -> chadbot.ChatGetMessagesResponse
-	23, // 21: chadbot.BackendMessage.config_get_response:type_name -> chadbot.ConfigGetResponse
-	24, // 22: chadbot.BackendMessage.config_changed:type_name -> chadbot.ConfigChanged
-	0,  // 23: chadbot.PluginService.Connect:input_type -> chadbot.PluginMessage
-	1,  // 24: chadbot.PluginService.Connect:output_type -> chadbot.BackendMessage
-	24, // [24:25] is the sub-list for method output_type
-	23, // [23:24] is the sub-list for method input_type
-	23, // [23:23] is the sub-list for extension type_name
-	23, // [23:23] is the sub-list for extension extendee
-	0,  // [0:23] is the sub-list for field type_name
+	3,  // 0: chadbot.PluginMessage.register:type_name -> chadbot.RegisterRequest
+	6,  // 1: chadbot.PluginMessage.skill_register:type_name -> chadbot.SkillRegister
+	7,  // 2: chadbot.PluginMessage.event_subscribe:type_name -> chadbot.EventSubscribe
+	8,  // 3: chadbot.PluginMessage.event_emit:type_name -> chadbot.EventEmit
+	9,  // 4: chadbot.PluginMessage.skill_response:type_name -> chadbot.SkillResponse
+	10, // 5: chadbot.PluginMessage.storage_request:type_name -> chadbot.StorageRequest
+	11, // 6: chadbot.PluginMessage.chat_get_or_create:type_name -> chadbot.ChatGetOrCreateRequest
+	12, // 7: chadbot.PluginMessage.chat_add_message:type_name -> chadbot.ChatAddMessageRequest
+	13, // 8: chadbot.PluginMessage.chat_llm_request:type_name -> chadbot.ChatLLMRequest
+	14, // 9: chadbot.PluginMessage.chat_get_messages:type_name -> chadbot.ChatGetMessagesRequest
+	15, // 10: chadbot.PluginMessage.config_schema:type_name -> chadbot.ConfigSchema
+	16, // 11: chadbot.PluginMessage.config_get:type_name -> chadbot.ConfigGetRequest
+	1,  // 12: chadbot.PluginMessage.documentation:type_name -> chadbot.PluginDocumentation
+	4,  // 13: chadbot.BackendMessage.register_response:type_name -> chadbot.RegisterResponse
+	17, // 14: chadbot.BackendMessage.skill_invoke:type_name -> chadbot.SkillInvoke
+	18, // 15: chadbot.BackendMessage.event_dispatch:type_name -> chadbot.EventDispatch
+	5,  // 16: chadbot.BackendMessage.error:type_name -> chadbot.Error
+	19, // 17: chadbot.BackendMessage.storage_response:type_name -> chadbot.StorageResponse
+	20, // 18: chadbot.BackendMessage.chat_get_or_create_response:type_name -> chadbot.ChatGetOrCreateResponse
+	21, // 19: chadbot.BackendMessage.chat_add_message_response:type_name -> chadbot.ChatAddMessageResponse
+	22, // 20: chadbot.BackendMessage.chat_llm_response:type_name -> chadbot.ChatLLMResponse
+	23, // 21: chadbot.BackendMessage.chat_get_messages_response:type_name -> chadbot.ChatGetMessagesResponse
+	24, // 22: chadbot.BackendMessage.config_get_response:type_name -> chadbot.ConfigGetResponse
+	25, // 23: chadbot.BackendMessage.config_changed:type_name -> chadbot.ConfigChanged
+	0,  // 24: chadbot.PluginService.Connect:input_type -> chadbot.PluginMessage
+	2,  // 25: chadbot.PluginService.Connect:output_type -> chadbot.BackendMessage
+	25, // [25:26] is the sub-list for method output_type
+	24, // [24:25] is the sub-list for method input_type
+	24, // [24:24] is the sub-list for extension type_name
+	24, // [24:24] is the sub-list for extension extendee
+	0,  // [0:24] is the sub-list for field type_name
 }
 
 func init() { file_chadbot_plugin_proto_init() }
@@ -826,8 +893,9 @@ func file_chadbot_plugin_proto_init() {
 		(*PluginMessage_ChatGetMessages)(nil),
 		(*PluginMessage_ConfigSchema)(nil),
 		(*PluginMessage_ConfigGet)(nil),
+		(*PluginMessage_Documentation)(nil),
 	}
-	file_chadbot_plugin_proto_msgTypes[1].OneofWrappers = []any{
+	file_chadbot_plugin_proto_msgTypes[2].OneofWrappers = []any{
 		(*BackendMessage_RegisterResponse)(nil),
 		(*BackendMessage_SkillInvoke)(nil),
 		(*BackendMessage_EventDispatch)(nil),
@@ -846,7 +914,7 @@ func file_chadbot_plugin_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_chadbot_plugin_proto_rawDesc), len(file_chadbot_plugin_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   5,
+			NumMessages:   6,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

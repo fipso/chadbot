@@ -31,7 +31,14 @@ message PluginMessage {
     // Config
     ConfigSchema config_schema = 11;
     ConfigGetRequest config_get = 12;
+    // Documentation
+    PluginDocumentation documentation = 13;
   }
+}
+
+// Plugin documentation (PLUGIN.md content)
+message PluginDocumentation {
+  string content = 1;  // Markdown content
 }
 
 // Messages from backend to plugin

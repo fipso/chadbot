@@ -149,6 +149,13 @@ func (h *Handler) HandleConnection(stream pb.PluginService_ConnectServer) error 
 			}
 			h.handleConfigGet(plugin.Name, payload.ConfigGet, stream)
 
+		case *pb.PluginMessage_Documentation:
+			if plugin == nil {
+				h.sendError(stream, 1, "Must register before setting documentation", "")
+				continue
+			}
+			h.manager.SetDocumentation(pluginID, payload.Documentation.Content)
+
 		default:
 			log.Printf("[Handler] Unknown message type from plugin %s", pluginID)
 		}
@@ -177,8 +184,13 @@ func (h *Handler) handleRegister(req *pb.RegisterRequest, stream pb.PluginServic
 
 func (h *Handler) handleSkillRegister(pluginID string, req *pb.SkillRegister) {
 	registry := h.manager.Registry()
+	plugin, ok := h.manager.Get(pluginID)
+	if !ok {
+		log.Printf("[Handler] Plugin %s not found for skill registration", pluginID)
+		return
+	}
 	for _, skill := range req.Skills {
-		if err := registry.RegisterSkill(pluginID, skill); err != nil {
+		if err := registry.RegisterSkill(pluginID, plugin.Name, skill); err != nil {
 			log.Printf("[Handler] Failed to register skill %s: %v", skill.Name, err)
 		}
 	}

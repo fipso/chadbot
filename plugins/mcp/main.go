@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -19,6 +20,9 @@ import (
 	pb "github.com/fipso/chadbot/gen/chadbot"
 	"github.com/fipso/chadbot/pkg/sdk"
 )
+
+//go:embed PLUGIN.md
+var pluginDocumentation string
 
 const serversTable = "servers"
 
@@ -250,6 +254,7 @@ func main() {
 	}
 	client = sdk.NewClient("mcp", "1.0.0", "MCP (Model Context Protocol) server integration - spawn and invoke MCP servers")
 	client = client.WithSocket(socketPath)
+	client = client.SetDocumentation(pluginDocumentation)
 
 	// Initialize server manager
 	manager = NewServerManager()

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -103,7 +104,33 @@ func (r *Router) ListProviders() []ProviderInfo {
 // DefaultSystemPrompt is prepended to all conversations
 const DefaultSystemPrompt = `You are a helpful AI assistant. You have access to tools/skills provided by plugins.
 IMPORTANT: Only use the tools that are explicitly provided to you. Do not make up or hallucinate tools that don't exist.
-If asked what tools you have, list ONLY the ones provided in the current conversation - nothing else.`
+If asked what tools you have, list ONLY the ones provided in the current conversation - nothing else.
+
+When using tools to extract or gather data, be efficient with token usage:
+- Extract only the specific information needed, not entire pages or datasets
+- Summarize large results before requesting more data
+- Avoid redundant tool calls - plan your approach before executing
+- If a tool returns a large response, focus on the relevant parts in your answer`
+
+// buildSystemPrompt creates the system prompt including plugin documentation
+func (r *Router) buildSystemPrompt() string {
+	var sb strings.Builder
+	sb.WriteString(DefaultSystemPrompt)
+
+	// Get plugins that have registered skills
+	pluginNames := r.registry.GetPluginsWithSkills()
+	for _, name := range pluginNames {
+		doc := r.manager.GetDocumentationByName(name)
+		if doc != "" {
+			sb.WriteString("\n\n---\n")
+			sb.WriteString(fmt.Sprintf("## Plugin: %s\n\n", name))
+			sb.WriteString(doc)
+			log.Printf("[LLM Router] Added documentation for plugin: %s (%d bytes)", name, len(doc))
+		}
+	}
+
+	return sb.String()
+}
 
 // Chat processes a chat request with tool calling loop
 func (r *Router) Chat(ctx context.Context, messages []Message, providerName string) (*Response, error) {
@@ -115,8 +142,9 @@ func (r *Router) Chat(ctx context.Context, messages []Message, providerName stri
 		return nil, fmt.Errorf("no LLM provider available")
 	}
 
-	// Prepend system prompt
-	messages = append([]Message{{Role: "system", Content: DefaultSystemPrompt}}, messages...)
+	// Prepend system prompt with plugin documentation
+	systemPrompt := r.buildSystemPrompt()
+	messages = append([]Message{{Role: "system", Content: systemPrompt}}, messages...)
 
 	// Convert skills to tools
 	tools := r.getTools()
@@ -147,13 +175,84 @@ func (r *Router) Chat(ctx context.Context, messages []Message, providerName stri
 				result = fmt.Sprintf("Error: %s", err.Error())
 			}
 
+			// Truncate very large responses to avoid token limits
+			const maxResultSize = 16000
+			if len(result) > maxResultSize {
+				result = result[:maxResultSize] + "\n\n[... truncated, response was " + fmt.Sprintf("%d", len(result)) + " bytes]"
+				log.Printf("[LLM Router] Tool %s result truncated from %d to %d bytes", tc.Name, len(result), maxResultSize)
+			}
+
+			log.Printf("[LLM Router] Tool %s result (%d bytes): %.200s...", tc.Name, len(result), result)
+
 			messages = append(messages, Message{
 				Role:       "tool",
 				Content:    result,
 				ToolCallID: tc.ID,
 			})
 		}
+		// Prune old tool exchanges to keep context manageable
+		// Keep: system prompt (1) + user messages + last N tool exchanges
+		const maxToolExchanges = 10 // Each exchange = assistant + tool messages
+		messages = pruneToolHistory(messages, maxToolExchanges)
+
+		log.Printf("[LLM Router] Continuing with %d messages", len(messages))
 	}
+}
+
+// pruneToolHistory keeps system prompt, user messages, and last N tool exchanges
+func pruneToolHistory(messages []Message, maxExchanges int) []Message {
+	if len(messages) <= 10 {
+		return messages
+	}
+
+	// Find where tool exchanges start (after system + initial user messages)
+	toolStart := 0
+	for i, m := range messages {
+		if m.Role == "assistant" && len(m.ToolCalls) > 0 {
+			toolStart = i
+			break
+		}
+	}
+
+	if toolStart == 0 {
+		return messages
+	}
+
+	// Count tool exchanges (assistant with tool_calls + tool responses)
+	toolMessages := messages[toolStart:]
+	exchangeCount := 0
+	for _, m := range toolMessages {
+		if m.Role == "assistant" && len(m.ToolCalls) > 0 {
+			exchangeCount++
+		}
+	}
+
+	if exchangeCount <= maxExchanges {
+		return messages
+	}
+
+	// Keep only the last maxExchanges
+	keepExchanges := maxExchanges
+	keptMessages := messages[:toolStart] // System + user messages
+
+	// Walk backwards to find where to start keeping
+	currentExchange := 0
+	startKeepIdx := len(toolMessages)
+	for i := len(toolMessages) - 1; i >= 0; i-- {
+		if toolMessages[i].Role == "assistant" && len(toolMessages[i].ToolCalls) > 0 {
+			currentExchange++
+			if currentExchange == keepExchanges {
+				startKeepIdx = i
+				break
+			}
+		}
+	}
+
+	keptMessages = append(keptMessages, toolMessages[startKeepIdx:]...)
+	log.Printf("[LLM Router] Pruned history: %d -> %d messages (kept %d tool exchanges)",
+		len(messages), len(keptMessages), keepExchanges)
+
+	return keptMessages
 }
 
 // getTools converts registered skills to LLM tools

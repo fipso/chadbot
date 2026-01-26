@@ -10,8 +10,9 @@ import (
 
 // RegisteredSkill holds a skill and its owner plugin
 type RegisteredSkill struct {
-	Skill    *pb.Skill
-	PluginID string
+	Skill      *pb.Skill
+	PluginID   string
+	PluginName string
 }
 
 // Registry manages skill registration and lookup
@@ -28,7 +29,7 @@ func NewRegistry() *Registry {
 }
 
 // RegisterSkill registers a skill for a plugin
-func (r *Registry) RegisterSkill(pluginID string, skill *pb.Skill) error {
+func (r *Registry) RegisterSkill(pluginID, pluginName string, skill *pb.Skill) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -37,11 +38,12 @@ func (r *Registry) RegisterSkill(pluginID string, skill *pb.Skill) error {
 	}
 
 	r.skills[skill.Name] = &RegisteredSkill{
-		Skill:    skill,
-		PluginID: pluginID,
+		Skill:      skill,
+		PluginID:   pluginID,
+		PluginName: pluginName,
 	}
 
-	log.Printf("[Registry] Registered skill: %s (plugin: %s)", skill.Name, pluginID)
+	log.Printf("[Registry] Registered skill: %s (plugin: %s)", skill.Name, pluginName)
 	return nil
 }
 
@@ -89,4 +91,20 @@ func (r *Registry) GetSkillsForLLM() []*pb.Skill {
 		skills = append(skills, rs.Skill)
 	}
 	return skills
+}
+
+// GetPluginsWithSkills returns unique plugin names that have registered skills
+func (r *Registry) GetPluginsWithSkills() []string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+
+	seen := make(map[string]bool)
+	var names []string
+	for _, rs := range r.skills {
+		if !seen[rs.PluginName] {
+			seen[rs.PluginName] = true
+			names = append(names, rs.PluginName)
+		}
+	}
+	return names
 }

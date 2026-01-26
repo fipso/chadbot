@@ -10,13 +10,14 @@ import (
 
 // Plugin represents a connected plugin
 type Plugin struct {
-	ID           string
-	Name         string
-	Version      string
-	Description  string
-	Stream       pb.PluginService_ConnectServer
-	Subscribed   []string // Event patterns subscribed to
-	ConfigSchema *pb.ConfigSchema
+	ID            string
+	Name          string
+	Version       string
+	Description   string
+	Stream        pb.PluginService_ConnectServer
+	Subscribed    []string // Event patterns subscribed to
+	ConfigSchema  *pb.ConfigSchema
+	Documentation string // PLUGIN.md content
 }
 
 // Manager handles plugin lifecycle and communication
@@ -222,4 +223,39 @@ func (m *Manager) NotifyConfigChanged(pluginID, key, value string, allValues map
 			},
 		},
 	})
+}
+
+// SetDocumentation sets the documentation for a plugin
+func (m *Manager) SetDocumentation(pluginID, content string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	if plugin, ok := m.plugins[pluginID]; ok {
+		plugin.Documentation = content
+		log.Printf("[Manager] Documentation set for plugin %s", plugin.Name)
+	}
+}
+
+// GetDocumentation returns the documentation for a plugin by ID
+func (m *Manager) GetDocumentation(pluginID string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	if plugin, ok := m.plugins[pluginID]; ok {
+		return plugin.Documentation
+	}
+	return ""
+}
+
+// GetDocumentationByName returns the documentation for a plugin by name
+func (m *Manager) GetDocumentationByName(name string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	for _, p := range m.plugins {
+		if p.Name == name {
+			return p.Documentation
+		}
+	}
+	return ""
 }
