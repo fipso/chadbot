@@ -291,6 +291,19 @@ MQTT broker integration.
 **Events emitted:**
 - `mqtt.message.received` - When message arrives on subscribed topic
 
+### TextHooks (`plugins/texthooks`)
+
+User-defined automation hooks with natural language instructions. Create event-driven automations by defining hooks that trigger on specific events and execute actions via LLM evaluation.
+
+**Skills:**
+- `hooks_create` - Create a new automation hook
+- `hooks_list` - List all automation hooks
+- `hooks_get` - Get details of a specific hook
+- `hooks_update` - Update an existing hook
+- `hooks_delete` - Delete an automation hook
+- `hooks_enable` - Enable a disabled hook
+- `hooks_disable` - Disable a hook without deleting it
+
 ## Architecture
 
 ```
