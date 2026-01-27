@@ -9,12 +9,22 @@ export interface Chat {
   messages: Message[]
 }
 
+export interface Attachment {
+  type: string
+  mime_type: string
+  data: string  // base64 encoded
+  url?: string
+  name?: string
+}
+
 export interface Message {
   id: string
   chat_id: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'plugin'
   content: string
   created_at: string
+  display_only?: boolean
+  attachments?: string  // JSON string of Attachment[] from backend
 }
 
 export async function fetchChats(): Promise<Chat[]> {

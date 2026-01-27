@@ -185,12 +185,11 @@ function handleKeydown(e: KeyboardEvent) {
   margin-bottom: 16px;
 }
 
-.new-chat-btn {
-  width: 100%;
-}
-
+.new-chat-btn,
 .status-btn {
   width: 100%;
+  justify-content: flex-start;
+  margin-left: 0;
 }
 
 .model-selector {

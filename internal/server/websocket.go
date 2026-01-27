@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -564,9 +565,13 @@ func (c *WSClient) processWithLLM(msg IncomingChatMessage) {
 		return
 	}
 
-	// Convert to LLM messages
+	// Convert to LLM messages, filtering out display-only and plugin messages
 	messages := make([]llm.Message, 0, len(dbMessages))
 	for _, m := range dbMessages {
+		// Skip display-only messages and plugin messages (not valid LLM roles)
+		if m.DisplayOnly || m.Role == "plugin" {
+			continue
+		}
 		messages = append(messages, llm.Message{
 			Role:    m.Role,
 			Content: m.Content,
@@ -580,7 +585,8 @@ func (c *WSClient) processWithLLM(msg IncomingChatMessage) {
 		}
 	}
 
-	resp, err := c.Server.llmRouter.Chat(ctx, messages, msg.Provider)
+	chatCtx := &llm.ChatContext{ChatID: msg.ChatID, UserID: c.UserID}
+	resp, err := c.Server.llmRouter.Chat(ctx, messages, msg.Provider, chatCtx)
 	if err != nil {
 		log.Printf("[WebSocket] LLM error: %v", err)
 		c.send("chat.error", map[string]string{"error": err.Error()})
@@ -607,6 +613,40 @@ func (c *WSClient) processWithLLM(msg IncomingChatMessage) {
 		"role":       "assistant",
 		"created_at": assistantMsg.CreatedAt,
 	})
+
+	// Process deferred attachments (images, etc.) after assistant response
+	for _, da := range resp.DeferredAttachments {
+		if da.ChatID == "" {
+			da.ChatID = msg.ChatID
+		}
+
+		// Save to database
+		deferredMsg := &storage.Message{
+			ID:          uuid.New().String(),
+			ChatID:      da.ChatID,
+			Role:        da.Role,
+			Content:     da.Content,
+			DisplayOnly: da.DisplayOnly,
+			CreatedAt:   time.Now(),
+		}
+
+		// Serialize attachments to JSON
+		if len(da.Attachments) > 0 {
+			attachmentsJSON, err := json.Marshal(da.Attachments)
+			if err == nil {
+				deferredMsg.Attachments = string(attachmentsJSON)
+			}
+		}
+
+		if err := storage.AddMessage(deferredMsg); err != nil {
+			log.Printf("[WebSocket] Failed to save deferred message: %v", err)
+			continue
+		}
+
+		// Broadcast to connected clients
+		c.Server.BroadcastMessage(da.ChatID, deferredMsg, da.Attachments)
+		log.Printf("[WebSocket] Added deferred attachment message: %s", deferredMsg.ID)
+	}
 
 	// Emit as event
 	event := &pb.Event{
@@ -789,5 +829,43 @@ func (s *WebSocketServer) Broadcast(msgType string, payload any) {
 		default:
 		}
 	}
+}
+
+// BroadcastMessage broadcasts a chat message to connected WebSocket clients
+// This implements chat.MessageBroadcaster interface
+func (s *WebSocketServer) BroadcastMessage(chatID string, msg *storage.Message, attachments []*pb.Attachment) {
+	// Convert attachments to JSON-friendly format
+	var jsonAttachments []map[string]interface{}
+	for _, a := range attachments {
+		att := map[string]interface{}{
+			"type":      a.Type,
+			"mime_type": a.MimeType,
+		}
+		if len(a.Data) > 0 {
+			// Encode binary data as base64
+			att["data"] = base64.StdEncoding.EncodeToString(a.Data)
+		}
+		if a.Url != "" {
+			att["url"] = a.Url
+		}
+		if a.Filename != "" {
+			att["name"] = a.Filename
+		}
+		jsonAttachments = append(jsonAttachments, att)
+	}
+
+	payload := map[string]interface{}{
+		"id":          msg.ID,
+		"chat_id":     chatID,
+		"content":     msg.Content,
+		"role":        msg.Role,
+		"created_at":  msg.CreatedAt,
+		"display_only": msg.DisplayOnly,
+	}
+	if len(jsonAttachments) > 0 {
+		payload["attachments"] = jsonAttachments
+	}
+
+	s.Broadcast("chat.message", payload)
 }
 

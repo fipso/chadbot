@@ -16,6 +16,17 @@ import (
 // SkillHandler is a function that handles skill invocations
 type SkillHandler func(ctx context.Context, args map[string]string) (string, error)
 
+// SkillInvocation contains the full context of a skill invocation
+type SkillInvocation struct {
+	Args      map[string]string
+	ChatID    string // The chat ID where this skill was invoked (may be empty)
+	UserID    string // The user ID who invoked the skill (may be empty)
+	RequestID string // Unique request ID for this invocation
+}
+
+// SkillHandlerWithContext is an extended handler that receives invocation context
+type SkillHandlerWithContext func(ctx context.Context, inv *SkillInvocation) (string, error)
+
 // EventHandler is a function that handles events
 type EventHandler func(event *pb.Event)
 
@@ -35,10 +46,11 @@ type Client struct {
 	client pb.PluginServiceClient
 	stream pb.PluginService_ConnectClient
 
-	mu            sync.RWMutex
-	skills        map[string]*pb.Skill
-	skillHandlers map[string]SkillHandler
-	eventHandlers []EventHandler
+	mu                        sync.RWMutex
+	skills                    map[string]*pb.Skill
+	skillHandlers             map[string]SkillHandler
+	skillHandlersWithContext  map[string]SkillHandlerWithContext
+	eventHandlers             []EventHandler
 
 	// Chat service handlers
 	chatLLMHandler    ChatLLMResponseHandler
@@ -66,19 +78,20 @@ type Client struct {
 // NewClient creates a new plugin client
 func NewClient(name, version, description string) *Client {
 	return &Client{
-		name:               name,
-		version:            version,
-		description:        description,
-		socket:             "/tmp/chadbot.sock",
-		skills:             make(map[string]*pb.Skill),
-		skillHandlers:      make(map[string]SkillHandler),
-		pendingChatReqs:    make(map[string]chan *pb.ChatGetOrCreateResponse),
-		pendingAddMsgReqs:  make(map[string]chan *pb.ChatAddMessageResponse),
-		pendingLLMReqs:     make(map[string]chan *pb.ChatLLMResponse),
-		pendingStorageReqs: make(map[string]chan *pb.StorageResponse),
-		configValues:       make(map[string]string),
-		pendingConfigReqs:  make(map[string]chan *pb.ConfigGetResponse),
-		runDone:            make(chan struct{}),
+		name:                     name,
+		version:                  version,
+		description:              description,
+		socket:                   "/tmp/chadbot.sock",
+		skills:                   make(map[string]*pb.Skill),
+		skillHandlers:            make(map[string]SkillHandler),
+		skillHandlersWithContext: make(map[string]SkillHandlerWithContext),
+		pendingChatReqs:          make(map[string]chan *pb.ChatGetOrCreateResponse),
+		pendingAddMsgReqs:        make(map[string]chan *pb.ChatAddMessageResponse),
+		pendingLLMReqs:           make(map[string]chan *pb.ChatLLMResponse),
+		pendingStorageReqs:       make(map[string]chan *pb.StorageResponse),
+		configValues:             make(map[string]string),
+		pendingConfigReqs:        make(map[string]chan *pb.ConfigGetResponse),
+		runDone:                  make(chan struct{}),
 	}
 }
 
@@ -101,6 +114,14 @@ func (c *Client) RegisterSkill(skill *pb.Skill, handler SkillHandler) {
 	defer c.mu.Unlock()
 	c.skills[skill.Name] = skill
 	c.skillHandlers[skill.Name] = handler
+}
+
+// RegisterSkillWithContext registers a skill with access to invocation context (chat_id, user_id, etc.)
+func (c *Client) RegisterSkillWithContext(skill *pb.Skill, handler SkillHandlerWithContext) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.skills[skill.Name] = skill
+	c.skillHandlersWithContext[skill.Name] = handler
 }
 
 // OnEvent registers an event handler
@@ -372,19 +393,34 @@ func (c *Client) processMessages() {
 
 func (c *Client) handleSkillInvoke(ctx context.Context, invoke *pb.SkillInvoke) {
 	c.mu.RLock()
-	handler, ok := c.skillHandlers[invoke.SkillName]
+	handler, hasHandler := c.skillHandlers[invoke.SkillName]
+	handlerWithCtx, hasHandlerWithCtx := c.skillHandlersWithContext[invoke.SkillName]
 	c.mu.RUnlock()
 
 	var result string
 	var errMsg string
 	success := true
 
-	if !ok {
+	if !hasHandler && !hasHandlerWithCtx {
 		success = false
 		errMsg = fmt.Sprintf("skill %s not found", invoke.SkillName)
 	} else {
 		var err error
-		result, err = handler(ctx, invoke.Arguments)
+		if hasHandlerWithCtx {
+			// Use context-aware handler
+			inv := &SkillInvocation{
+				Args:      invoke.Arguments,
+				RequestID: invoke.RequestId,
+			}
+			if invoke.Context != nil {
+				inv.ChatID = invoke.Context.ChatId
+				inv.UserID = invoke.Context.UserId
+			}
+			result, err = handlerWithCtx(ctx, inv)
+		} else {
+			// Use simple handler
+			result, err = handler(ctx, invoke.Arguments)
+		}
 		if err != nil {
 			success = false
 			errMsg = err.Error()
@@ -467,25 +503,38 @@ func (c *Client) ChatGetOrCreate(platform, linkedID, name string) (*pb.ChatGetOr
 	}
 }
 
+// ChatAddMessageOptions contains optional parameters for ChatAddMessage
+type ChatAddMessageOptions struct {
+	DisplayOnly bool              // If true, message is shown in UI but not sent to LLM
+	Attachments []*pb.Attachment  // Optional attachments (images, files, etc.)
+}
+
 // ChatAddMessage adds a message to a chat
-func (c *Client) ChatAddMessage(chatID, role, content string) (*pb.ChatAddMessageResponse, error) {
-	reqID := fmt.Sprintf("chat_add_%d", time.Now().UnixNano())
+func (c *Client) ChatAddMessage(chatID, role, content string, opts ...ChatAddMessageOptions) (*pb.ChatAddMessageResponse, error) {
+	req := &pb.ChatAddMessageRequest{
+		RequestId: fmt.Sprintf("chat_add_%d", time.Now().UnixNano()),
+		ChatId:    chatID,
+		Role:      role,
+		Content:   content,
+	}
+
+	// Apply options if provided
+	if len(opts) > 0 {
+		req.DisplayOnly = opts[0].DisplayOnly
+		req.Attachments = opts[0].Attachments
+	}
+
 	if err := c.stream.Send(&pb.PluginMessage{
 		Payload: &pb.PluginMessage_ChatAddMessage{
-			ChatAddMessage: &pb.ChatAddMessageRequest{
-				RequestId: reqID,
-				ChatId:    chatID,
-				Role:      role,
-				Content:   content,
-			},
+			ChatAddMessage: req,
 		},
 	}); err != nil {
 		return nil, err
 	}
 
 	c.mu.Lock()
-	c.pendingAddMsgReqs[reqID] = make(chan *pb.ChatAddMessageResponse, 1)
-	ch := c.pendingAddMsgReqs[reqID]
+	c.pendingAddMsgReqs[req.RequestId] = make(chan *pb.ChatAddMessageResponse, 1)
+	ch := c.pendingAddMsgReqs[req.RequestId]
 	c.mu.Unlock()
 
 	select {

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { wsService, type WSMessage, type ChatMessagePayload } from '../services/websocket'
+import { wsService, type WSMessage, type ChatMessagePayload, type Attachment } from '../services/websocket'
 import * as api from '../services/api'
 import type { Provider } from '../services/api'
 
@@ -8,8 +8,10 @@ export interface ChatMessage {
   id: string
   chat_id: string
   content: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'plugin'
   created_at: string
+  display_only?: boolean
+  attachments?: Attachment[]
 }
 
 export interface Chat {
@@ -39,15 +41,34 @@ export const useChatStore = defineStore('chat', () => {
     )
   })
 
+  // Parse attachments JSON string from API into array
+  function parseAttachments(attachmentsJson?: string): Attachment[] | undefined {
+    if (!attachmentsJson) return undefined
+    try {
+      return JSON.parse(attachmentsJson)
+    } catch {
+      return undefined
+    }
+  }
+
   async function loadChats() {
     try {
       const serverChats = await api.fetchChats()
       chats.value.clear()
       for (const chat of serverChats) {
+        const messages: ChatMessage[] = (chat.messages || []).map(m => ({
+          id: m.id,
+          chat_id: m.chat_id,
+          content: m.content,
+          role: m.role,
+          created_at: m.created_at,
+          display_only: m.display_only,
+          attachments: parseAttachments(m.attachments)
+        }))
         chats.value.set(chat.id, {
           id: chat.id,
           name: chat.name,
-          messages: chat.messages || [],
+          messages,
           created_at: chat.created_at,
           updated_at: chat.updated_at
         })
@@ -166,15 +187,19 @@ export const useChatStore = defineStore('chat', () => {
       // Handle incoming messages
       wsService.on('chat.message', (msg: WSMessage) => {
         const payload = msg.payload as ChatMessagePayload
-        if (payload.role === 'assistant') {
+        if (payload.role === 'assistant' || payload.role === 'plugin') {
           addMessage(payload.chat_id, {
             id: payload.id,
             chat_id: payload.chat_id,
             content: payload.content,
-            role: 'assistant',
-            created_at: payload.created_at
+            role: payload.role,
+            created_at: payload.created_at,
+            display_only: payload.display_only,
+            attachments: payload.attachments
           })
-          isLoading.value = false
+          if (payload.role === 'assistant') {
+            isLoading.value = false
+          }
         }
       })
 

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 )
@@ -94,8 +95,17 @@ func (p *OpenAIProvider) Chat(ctx context.Context, messages []Message, tools []T
 
 	// Parse tool calls
 	for _, tc := range choice.Message.ToolCalls {
-		var args map[string]string
-		json.Unmarshal([]byte(tc.Function.Arguments), &args)
+		log.Printf("[OpenAI] Raw tool call: %s, args JSON: %s", tc.Function.Name, tc.Function.Arguments)
+
+		// Parse into interface{} first to handle both strings and numbers
+		var rawArgs map[string]interface{}
+		json.Unmarshal([]byte(tc.Function.Arguments), &rawArgs)
+
+		// Convert all values to strings
+		args := make(map[string]string)
+		for k, v := range rawArgs {
+			args[k] = fmt.Sprintf("%v", v)
+		}
 
 		response.ToolCalls = append(response.ToolCalls, ToolCall{
 			ID:        tc.ID,

@@ -10,6 +10,7 @@ require (
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/modelcontextprotocol/go-sdk v1.2.0
 	go.mau.fi/whatsmeow v0.0.0-20260123225751-89be06b020db
+	golang.org/x/image v0.18.0
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11
 	gorm.io/driver/sqlite v1.6.0

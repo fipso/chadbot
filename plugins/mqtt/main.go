@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -18,6 +19,9 @@ import (
 	pb "github.com/fipso/chadbot/gen/chadbot"
 	"github.com/fipso/chadbot/pkg/sdk"
 )
+
+//go:embed PLUGIN.md
+var pluginDocumentation string
 
 const (
 	subscriptionsTable = "subscriptions"
@@ -53,6 +57,7 @@ func main() {
 	}
 	client = sdk.NewClient("mqtt", "1.0.0", "MQTT broker integration - subscribe to topics and receive messages as events")
 	client = client.WithSocket(socketPath)
+	client = client.SetDocumentation(pluginDocumentation)
 
 	// Register skills
 	registerSkills()
@@ -601,6 +606,18 @@ func handleGetMessages(ctx context.Context, args map[string]string) (string, err
 	rows, err := storage.Query(messagesTable, nil, "topic = ?", []string{topic}, "timestamp DESC", limit, 0)
 	if err != nil {
 		return "", fmt.Errorf("failed to query messages: %w", err)
+	}
+
+	// If no messages found, help the LLM by showing available topics
+	if len(rows) == 0 {
+		mu.RLock()
+		topics := make([]string, 0, len(activeTopics))
+		for t := range activeTopics {
+			topics = append(topics, t)
+		}
+		mu.RUnlock()
+
+		return fmt.Sprintf(`{"error": "no messages found for topic '%s'", "hint": "check topic name - active topics are: %v"}`, topic, topics), nil
 	}
 
 	type message struct {

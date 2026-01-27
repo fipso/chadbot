@@ -3,12 +3,22 @@ export interface WSMessage {
   payload: unknown
 }
 
+export interface Attachment {
+  type: string
+  mime_type: string
+  data: string  // base64 encoded
+  url?: string
+  name?: string
+}
+
 export interface ChatMessagePayload {
   id: string
   chat_id: string
   content: string
-  role: 'user' | 'assistant'
+  role: 'user' | 'assistant' | 'plugin'
   created_at: string
+  display_only?: boolean
+  attachments?: Attachment[]
 }
 
 type MessageHandler = (message: WSMessage) => void

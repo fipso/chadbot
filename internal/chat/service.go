@@ -2,6 +2,7 @@ package chat
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"time"
 
@@ -13,7 +14,12 @@ import (
 
 // LLMProvider is the interface for LLM chat functionality
 type LLMProvider interface {
-	Chat(ctx context.Context, messages []Message, providerName string) (*Response, error)
+	Chat(ctx context.Context, messages []Message, providerName string, chatID string) (*Response, error)
+}
+
+// MessageBroadcaster broadcasts new messages to connected clients
+type MessageBroadcaster interface {
+	BroadcastMessage(chatID string, msg *storage.Message, attachments []*pb.Attachment)
 }
 
 // Message for LLM
@@ -29,12 +35,18 @@ type Response struct {
 
 // Service handles chat operations for plugins (same logic as web UI)
 type Service struct {
-	llm LLMProvider
+	llm         LLMProvider
+	broadcaster MessageBroadcaster
 }
 
 // NewService creates a new chat service
 func NewService(llm LLMProvider) *Service {
 	return &Service{llm: llm}
+}
+
+// SetBroadcaster sets the message broadcaster for real-time updates
+func (s *Service) SetBroadcaster(b MessageBroadcaster) {
+	s.broadcaster = b
 }
 
 // HandleGetOrCreate handles ChatGetOrCreateRequest
@@ -63,17 +75,35 @@ func (s *Service) HandleGetOrCreate(req *pb.ChatGetOrCreateRequest) *pb.ChatGetO
 func (s *Service) HandleAddMessage(req *pb.ChatAddMessageRequest) *pb.ChatAddMessageResponse {
 	resp := &pb.ChatAddMessageResponse{RequestId: req.RequestId}
 
+	// Serialize attachments to JSON if present
+	var attachmentsJSON string
+	if len(req.Attachments) > 0 {
+		data, err := json.Marshal(req.Attachments)
+		if err != nil {
+			resp.Error = "Failed to serialize attachments: " + err.Error()
+			return resp
+		}
+		attachmentsJSON = string(data)
+	}
+
 	msg := &storage.Message{
-		ID:        uuid.New().String(),
-		ChatID:    req.ChatId,
-		Role:      req.Role,
-		Content:   req.Content,
-		CreatedAt: time.Now(),
+		ID:          uuid.New().String(),
+		ChatID:      req.ChatId,
+		Role:        req.Role,
+		Content:     req.Content,
+		DisplayOnly: req.DisplayOnly,
+		Attachments: attachmentsJSON,
+		CreatedAt:   time.Now(),
 	}
 
 	if err := storage.AddMessage(msg); err != nil {
 		resp.Error = err.Error()
 		return resp
+	}
+
+	// Broadcast to connected WebSocket clients
+	if s.broadcaster != nil {
+		s.broadcaster.BroadcastMessage(req.ChatId, msg, req.Attachments)
 	}
 
 	resp.Success = true
@@ -92,20 +122,24 @@ func (s *Service) HandleLLMRequest(req *pb.ChatLLMRequest) *pb.ChatLLMResponse {
 		return resp
 	}
 
-	// Convert to LLM messages
-	messages := make([]Message, len(dbMessages))
-	for i, m := range dbMessages {
-		messages[i] = Message{
+	// Convert to LLM messages, filtering out display-only and plugin messages
+	messages := make([]Message, 0, len(dbMessages))
+	for _, m := range dbMessages {
+		// Skip display-only messages and plugin messages (not valid LLM roles)
+		if m.DisplayOnly || m.Role == "plugin" {
+			continue
+		}
+		messages = append(messages, Message{
 			Role:    m.Role,
 			Content: m.Content,
-		}
+		})
 	}
 
 	// Call LLM
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	llmResp, err := s.llm.Chat(ctx, messages, req.Provider)
+	llmResp, err := s.llm.Chat(ctx, messages, req.Provider, req.ChatId)
 	if err != nil {
 		resp.Error = "LLM error: " + err.Error()
 		return resp
@@ -142,13 +176,24 @@ func (s *Service) HandleGetMessages(req *pb.ChatGetMessagesRequest) *pb.ChatGetM
 	resp.Success = true
 	resp.Messages = make([]*pb.ChatMessage, len(messages))
 	for i, m := range messages {
-		resp.Messages[i] = &pb.ChatMessage{
-			Id:        m.ID,
-			ChatId:    m.ChatID,
-			Role:      m.Role,
-			Content:   m.Content,
-			CreatedAt: m.CreatedAt.Format(time.RFC3339),
+		msg := &pb.ChatMessage{
+			Id:          m.ID,
+			ChatId:      m.ChatID,
+			Role:        m.Role,
+			Content:     m.Content,
+			CreatedAt:   m.CreatedAt.Format(time.RFC3339),
+			DisplayOnly: m.DisplayOnly,
 		}
+
+		// Deserialize attachments from JSON if present
+		if m.Attachments != "" {
+			var attachments []*pb.Attachment
+			if err := json.Unmarshal([]byte(m.Attachments), &attachments); err == nil {
+				msg.Attachments = attachments
+			}
+		}
+
+		resp.Messages[i] = msg
 	}
 	return resp
 }

@@ -2,9 +2,10 @@ package llm
 
 import (
 	"context"
+	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -43,9 +44,19 @@ type ToolCall struct {
 
 // Response represents an LLM response
 type Response struct {
-	Content   string     `json:"content"`
-	ToolCalls []ToolCall `json:"tool_calls,omitempty"`
-	Done      bool       `json:"done"`
+	Content            string              `json:"content"`
+	ToolCalls          []ToolCall          `json:"tool_calls,omitempty"`
+	Done               bool                `json:"done"`
+	DeferredAttachments []DeferredAttachment `json:"-"` // Attachments to add after response
+}
+
+// DeferredAttachment represents an attachment to add after the LLM response
+type DeferredAttachment struct {
+	ChatID      string
+	Role        string
+	Content     string
+	DisplayOnly bool
+	Attachments []*pb.Attachment
 }
 
 // Router routes requests to LLM providers and handles skill invocation
@@ -112,28 +123,28 @@ When using tools to extract or gather data, be efficient with token usage:
 - Avoid redundant tool calls - plan your approach before executing
 - If a tool returns a large response, focus on the relevant parts in your answer`
 
-// buildSystemPrompt creates the system prompt including plugin documentation
+// buildSystemPrompt creates the base system prompt (without plugin docs)
 func (r *Router) buildSystemPrompt() string {
-	var sb strings.Builder
-	sb.WriteString(DefaultSystemPrompt)
+	return DefaultSystemPrompt
+}
 
-	// Get plugins that have registered skills
-	pluginNames := r.registry.GetPluginsWithSkills()
-	for _, name := range pluginNames {
-		doc := r.manager.GetDocumentationByName(name)
-		if doc != "" {
-			sb.WriteString("\n\n---\n")
-			sb.WriteString(fmt.Sprintf("## Plugin: %s\n\n", name))
-			sb.WriteString(doc)
-			log.Printf("[LLM Router] Added documentation for plugin: %s (%d bytes)", name, len(doc))
-		}
+// getPluginDocumentation returns formatted documentation for a plugin
+func (r *Router) getPluginDocumentation(pluginName string) string {
+	doc := r.manager.GetDocumentationByName(pluginName)
+	if doc == "" {
+		return ""
 	}
+	return fmt.Sprintf("\n\n---\n## Plugin: %s\n\n%s", pluginName, doc)
+}
 
-	return sb.String()
+// ChatContext contains context information for the chat session
+type ChatContext struct {
+	ChatID string
+	UserID string
 }
 
 // Chat processes a chat request with tool calling loop
-func (r *Router) Chat(ctx context.Context, messages []Message, providerName string) (*Response, error) {
+func (r *Router) Chat(ctx context.Context, messages []Message, providerName string, chatCtx *ChatContext) (*Response, error) {
 	provider, ok := r.providers[providerName]
 	if !ok {
 		provider = r.providers[r.defaultProvider]
@@ -142,12 +153,18 @@ func (r *Router) Chat(ctx context.Context, messages []Message, providerName stri
 		return nil, fmt.Errorf("no LLM provider available")
 	}
 
-	// Prepend system prompt with plugin documentation
+	// Prepend system prompt (without plugin docs - those are added on-demand)
 	systemPrompt := r.buildSystemPrompt()
 	messages = append([]Message{{Role: "system", Content: systemPrompt}}, messages...)
 
 	// Convert skills to tools
 	tools := r.getTools()
+
+	// Track deferred attachments from skill results
+	var deferredAttachments []DeferredAttachment
+
+	// Track which plugins have had their documentation injected
+	loadedPluginDocs := make(map[string]bool)
 
 	// Main conversation loop with tool calls
 	for {
@@ -156,9 +173,50 @@ func (r *Router) Chat(ctx context.Context, messages []Message, providerName stri
 			return nil, err
 		}
 
-		// If no tool calls, return the response
+		// If no tool calls, return the response with deferred attachments
 		if len(resp.ToolCalls) == 0 {
+			resp.DeferredAttachments = deferredAttachments
 			return resp, nil
+		}
+
+		// Check if any tool calls need plugin documentation injected first
+		needsDocInjection := false
+		var docsToInject []string
+		for _, tc := range resp.ToolCalls {
+			skill, ok := r.registry.GetSkill(tc.Name)
+			if !ok {
+				continue
+			}
+			plugin, ok := r.manager.Get(skill.PluginID)
+			if !ok {
+				continue
+			}
+			pluginName := plugin.Name
+			if !loadedPluginDocs[pluginName] {
+				doc := r.getPluginDocumentation(pluginName)
+				if doc != "" {
+					docsToInject = append(docsToInject, doc)
+					loadedPluginDocs[pluginName] = true
+					needsDocInjection = true
+					log.Printf("[LLM Router] Injecting documentation for plugin: %s", pluginName)
+				}
+			}
+		}
+
+		// If we need to inject docs, add them to the system message and re-query
+		if needsDocInjection {
+			// Append plugin docs to system message
+			for i, m := range messages {
+				if m.Role == "system" {
+					for _, doc := range docsToInject {
+						messages[i].Content += doc
+					}
+					break
+				}
+			}
+			// Re-query the LLM with the documentation - don't add the tool calls yet
+			log.Printf("[LLM Router] Re-querying LLM with plugin documentation")
+			continue
 		}
 
 		// Add assistant message with tool calls
@@ -170,9 +228,17 @@ func (r *Router) Chat(ctx context.Context, messages []Message, providerName stri
 
 		// Execute tool calls
 		for _, tc := range resp.ToolCalls {
-			result, err := r.invokeSkill(ctx, tc.Name, tc.Arguments)
+			log.Printf("[LLM Router] Tool call: %s with args: %+v", tc.Name, tc.Arguments)
+			result, err := r.invokeSkill(ctx, tc.Name, tc.Arguments, chatCtx)
 			if err != nil {
 				result = fmt.Sprintf("Error: %s", err.Error())
+			}
+
+			// Check for deferred attachments in the result
+			textResult, deferred := r.extractDeferredAttachment(result, chatCtx)
+			if deferred != nil {
+				deferredAttachments = append(deferredAttachments, *deferred)
+				result = textResult
 			}
 
 			// Truncate very large responses to avoid token limits
@@ -197,6 +263,65 @@ func (r *Router) Chat(ctx context.Context, messages []Message, providerName stri
 
 		log.Printf("[LLM Router] Continuing with %d messages", len(messages))
 	}
+}
+
+// extractDeferredAttachment checks if a skill result contains a deferred attachment marker
+// Returns the text portion and the deferred attachment (if any)
+func (r *Router) extractDeferredAttachment(result string, chatCtx *ChatContext) (string, *DeferredAttachment) {
+	// Try to parse as JSON with __deferred_attachment__ key
+	var parsed map[string]interface{}
+	if err := json.Unmarshal([]byte(result), &parsed); err != nil {
+		return result, nil
+	}
+
+	deferredData, ok := parsed["__deferred_attachment__"].(map[string]interface{})
+	if !ok {
+		return result, nil
+	}
+
+	textResult, _ := parsed["text"].(string)
+
+	// Extract attachment data
+	attachmentData, ok := deferredData["attachment"].(map[string]interface{})
+	if !ok {
+		return textResult, nil
+	}
+
+	// Decode base64 data
+	dataStr, _ := attachmentData["data"].(string)
+	data, err := base64.StdEncoding.DecodeString(dataStr)
+	if err != nil {
+		log.Printf("[LLM Router] Failed to decode deferred attachment data: %v", err)
+		return textResult, nil
+	}
+
+	chatID := ""
+	if chatCtx != nil {
+		chatID = chatCtx.ChatID
+	}
+
+	role, _ := deferredData["role"].(string)
+	content, _ := deferredData["content"].(string)
+	displayOnly, _ := deferredData["display_only"].(bool)
+	mimeType, _ := attachmentData["mime_type"].(string)
+	attachType, _ := attachmentData["type"].(string)
+
+	deferred := &DeferredAttachment{
+		ChatID:      chatID,
+		Role:        role,
+		Content:     content,
+		DisplayOnly: displayOnly,
+		Attachments: []*pb.Attachment{
+			{
+				Type:     attachType,
+				MimeType: mimeType,
+				Data:     data,
+			},
+		},
+	}
+
+	log.Printf("[LLM Router] Extracted deferred attachment: type=%s, mime=%s, size=%d bytes", attachType, mimeType, len(data))
+	return textResult, deferred
 }
 
 // pruneToolHistory keeps system prompt, user messages, and last N tool exchanges
@@ -290,7 +415,7 @@ func (r *Router) getTools() []Tool {
 }
 
 // invokeSkill invokes a skill on a plugin
-func (r *Router) invokeSkill(ctx context.Context, skillName string, args map[string]string) (string, error) {
+func (r *Router) invokeSkill(ctx context.Context, skillName string, args map[string]string, chatCtx *ChatContext) (string, error) {
 	skill, ok := r.registry.GetSkill(skillName)
 	if !ok {
 		return "", fmt.Errorf("skill %s not found", skillName)
@@ -304,6 +429,15 @@ func (r *Router) invokeSkill(ctx context.Context, skillName string, args map[str
 	requestID := uuid.New().String()
 	respChan := r.manager.RegisterPendingRequest(requestID)
 
+	// Build invocation context
+	var invCtx *pb.InvocationContext
+	if chatCtx != nil {
+		invCtx = &pb.InvocationContext{
+			ChatId: chatCtx.ChatID,
+			UserId: chatCtx.UserID,
+		}
+	}
+
 	// Send skill invocation to plugin
 	err := plugin.Stream.Send(&pb.BackendMessage{
 		Payload: &pb.BackendMessage_SkillInvoke{
@@ -311,6 +445,7 @@ func (r *Router) invokeSkill(ctx context.Context, skillName string, args map[str
 				RequestId: requestID,
 				SkillName: skillName,
 				Arguments: args,
+				Context:   invCtx,
 			},
 		},
 	})

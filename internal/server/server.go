@@ -19,7 +19,7 @@ type llmAdapter struct {
 	router *llm.Router
 }
 
-func (a *llmAdapter) Chat(ctx context.Context, messages []chat.Message, provider string) (*chat.Response, error) {
+func (a *llmAdapter) Chat(ctx context.Context, messages []chat.Message, provider string, chatID string) (*chat.Response, error) {
 	// Convert chat.Message to llm.Message
 	llmMsgs := make([]llm.Message, len(messages))
 	for i, m := range messages {
@@ -29,7 +29,13 @@ func (a *llmAdapter) Chat(ctx context.Context, messages []chat.Message, provider
 		}
 	}
 
-	resp, err := a.router.Chat(ctx, llmMsgs, provider)
+	// Build chat context
+	var chatCtx *llm.ChatContext
+	if chatID != "" {
+		chatCtx = &llm.ChatContext{ChatID: chatID}
+	}
+
+	resp, err := a.router.Chat(ctx, llmMsgs, provider, chatCtx)
 	if err != nil {
 		return nil, err
 	}
@@ -110,6 +116,9 @@ func New(config *Config) *Server {
 	// Create servers
 	grpc := NewGRPCServer(handler, config.Socket)
 	ws := NewWebSocketServer(config.HTTPAddr, eventBus, llmRouter, manager, handler)
+
+	// Wire up WebSocket as message broadcaster for real-time plugin message updates
+	chatService.SetBroadcaster(ws)
 
 	return &Server{
 		config:    config,

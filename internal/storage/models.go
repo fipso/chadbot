@@ -21,11 +21,13 @@ type Chat struct {
 
 // Message represents a single message in a chat
 type Message struct {
-	ID        string    `gorm:"primaryKey" json:"id"`
-	ChatID    string    `gorm:"index" json:"chat_id"`
-	Role      string    `json:"role"` // "user" or "assistant"
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          string    `gorm:"primaryKey" json:"id"`
+	ChatID      string    `gorm:"index" json:"chat_id"`
+	Role        string    `json:"role"` // "user", "assistant", or "plugin"
+	Content     string    `json:"content"`
+	DisplayOnly bool      `json:"display_only"` // If true, not sent to LLM
+	Attachments string    `json:"attachments"`  // JSON array of attachments
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // PluginConfig stores plugin configuration values

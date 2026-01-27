@@ -182,20 +182,99 @@ func (x *ChatGetOrCreateResponse) GetCreated() bool {
 	return false
 }
 
+// Attachment for messages (images, files, etc.)
+type Attachment struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Type          string                 `protobuf:"bytes,1,opt,name=type,proto3" json:"type,omitempty"`                         // "image", "file", etc.
+	MimeType      string                 `protobuf:"bytes,2,opt,name=mime_type,json=mimeType,proto3" json:"mime_type,omitempty"` // e.g., "image/png"
+	Data          []byte                 `protobuf:"bytes,3,opt,name=data,proto3" json:"data,omitempty"`                         // Raw binary data
+	Url           string                 `protobuf:"bytes,4,opt,name=url,proto3" json:"url,omitempty"`                           // Alternative: URL to the attachment
+	Filename      string                 `protobuf:"bytes,5,opt,name=filename,proto3" json:"filename,omitempty"`                 // Optional filename
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *Attachment) Reset() {
+	*x = Attachment{}
+	mi := &file_chadbot_chat_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *Attachment) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*Attachment) ProtoMessage() {}
+
+func (x *Attachment) ProtoReflect() protoreflect.Message {
+	mi := &file_chadbot_chat_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use Attachment.ProtoReflect.Descriptor instead.
+func (*Attachment) Descriptor() ([]byte, []int) {
+	return file_chadbot_chat_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *Attachment) GetType() string {
+	if x != nil {
+		return x.Type
+	}
+	return ""
+}
+
+func (x *Attachment) GetMimeType() string {
+	if x != nil {
+		return x.MimeType
+	}
+	return ""
+}
+
+func (x *Attachment) GetData() []byte {
+	if x != nil {
+		return x.Data
+	}
+	return nil
+}
+
+func (x *Attachment) GetUrl() string {
+	if x != nil {
+		return x.Url
+	}
+	return ""
+}
+
+func (x *Attachment) GetFilename() string {
+	if x != nil {
+		return x.Filename
+	}
+	return ""
+}
+
 // Request to add a message to a chat
 type ChatAddMessageRequest struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
 	ChatId        string                 `protobuf:"bytes,2,opt,name=chat_id,json=chatId,proto3" json:"chat_id,omitempty"`
-	Role          string                 `protobuf:"bytes,3,opt,name=role,proto3" json:"role,omitempty"` // "user" or "assistant"
+	Role          string                 `protobuf:"bytes,3,opt,name=role,proto3" json:"role,omitempty"` // "user", "assistant", or "plugin"
 	Content       string                 `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"`
+	DisplayOnly   bool                   `protobuf:"varint,5,opt,name=display_only,json=displayOnly,proto3" json:"display_only,omitempty"` // If true, message is shown in UI but not sent to LLM
+	Attachments   []*Attachment          `protobuf:"bytes,6,rep,name=attachments,proto3" json:"attachments,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ChatAddMessageRequest) Reset() {
 	*x = ChatAddMessageRequest{}
-	mi := &file_chadbot_chat_proto_msgTypes[2]
+	mi := &file_chadbot_chat_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -207,7 +286,7 @@ func (x *ChatAddMessageRequest) String() string {
 func (*ChatAddMessageRequest) ProtoMessage() {}
 
 func (x *ChatAddMessageRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chadbot_chat_proto_msgTypes[2]
+	mi := &file_chadbot_chat_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -220,7 +299,7 @@ func (x *ChatAddMessageRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatAddMessageRequest.ProtoReflect.Descriptor instead.
 func (*ChatAddMessageRequest) Descriptor() ([]byte, []int) {
-	return file_chadbot_chat_proto_rawDescGZIP(), []int{2}
+	return file_chadbot_chat_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *ChatAddMessageRequest) GetRequestId() string {
@@ -251,6 +330,20 @@ func (x *ChatAddMessageRequest) GetContent() string {
 	return ""
 }
 
+func (x *ChatAddMessageRequest) GetDisplayOnly() bool {
+	if x != nil {
+		return x.DisplayOnly
+	}
+	return false
+}
+
+func (x *ChatAddMessageRequest) GetAttachments() []*Attachment {
+	if x != nil {
+		return x.Attachments
+	}
+	return nil
+}
+
 type ChatAddMessageResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	RequestId     string                 `protobuf:"bytes,1,opt,name=request_id,json=requestId,proto3" json:"request_id,omitempty"`
@@ -263,7 +356,7 @@ type ChatAddMessageResponse struct {
 
 func (x *ChatAddMessageResponse) Reset() {
 	*x = ChatAddMessageResponse{}
-	mi := &file_chadbot_chat_proto_msgTypes[3]
+	mi := &file_chadbot_chat_proto_msgTypes[4]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -275,7 +368,7 @@ func (x *ChatAddMessageResponse) String() string {
 func (*ChatAddMessageResponse) ProtoMessage() {}
 
 func (x *ChatAddMessageResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chadbot_chat_proto_msgTypes[3]
+	mi := &file_chadbot_chat_proto_msgTypes[4]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -288,7 +381,7 @@ func (x *ChatAddMessageResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatAddMessageResponse.ProtoReflect.Descriptor instead.
 func (*ChatAddMessageResponse) Descriptor() ([]byte, []int) {
-	return file_chadbot_chat_proto_rawDescGZIP(), []int{3}
+	return file_chadbot_chat_proto_rawDescGZIP(), []int{4}
 }
 
 func (x *ChatAddMessageResponse) GetRequestId() string {
@@ -331,7 +424,7 @@ type ChatLLMRequest struct {
 
 func (x *ChatLLMRequest) Reset() {
 	*x = ChatLLMRequest{}
-	mi := &file_chadbot_chat_proto_msgTypes[4]
+	mi := &file_chadbot_chat_proto_msgTypes[5]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -343,7 +436,7 @@ func (x *ChatLLMRequest) String() string {
 func (*ChatLLMRequest) ProtoMessage() {}
 
 func (x *ChatLLMRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chadbot_chat_proto_msgTypes[4]
+	mi := &file_chadbot_chat_proto_msgTypes[5]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -356,7 +449,7 @@ func (x *ChatLLMRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatLLMRequest.ProtoReflect.Descriptor instead.
 func (*ChatLLMRequest) Descriptor() ([]byte, []int) {
-	return file_chadbot_chat_proto_rawDescGZIP(), []int{4}
+	return file_chadbot_chat_proto_rawDescGZIP(), []int{5}
 }
 
 func (x *ChatLLMRequest) GetRequestId() string {
@@ -393,7 +486,7 @@ type ChatLLMResponse struct {
 
 func (x *ChatLLMResponse) Reset() {
 	*x = ChatLLMResponse{}
-	mi := &file_chadbot_chat_proto_msgTypes[5]
+	mi := &file_chadbot_chat_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -405,7 +498,7 @@ func (x *ChatLLMResponse) String() string {
 func (*ChatLLMResponse) ProtoMessage() {}
 
 func (x *ChatLLMResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chadbot_chat_proto_msgTypes[5]
+	mi := &file_chadbot_chat_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -418,7 +511,7 @@ func (x *ChatLLMResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatLLMResponse.ProtoReflect.Descriptor instead.
 func (*ChatLLMResponse) Descriptor() ([]byte, []int) {
-	return file_chadbot_chat_proto_rawDescGZIP(), []int{5}
+	return file_chadbot_chat_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *ChatLLMResponse) GetRequestId() string {
@@ -468,7 +561,7 @@ type ChatGetMessagesRequest struct {
 
 func (x *ChatGetMessagesRequest) Reset() {
 	*x = ChatGetMessagesRequest{}
-	mi := &file_chadbot_chat_proto_msgTypes[6]
+	mi := &file_chadbot_chat_proto_msgTypes[7]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -480,7 +573,7 @@ func (x *ChatGetMessagesRequest) String() string {
 func (*ChatGetMessagesRequest) ProtoMessage() {}
 
 func (x *ChatGetMessagesRequest) ProtoReflect() protoreflect.Message {
-	mi := &file_chadbot_chat_proto_msgTypes[6]
+	mi := &file_chadbot_chat_proto_msgTypes[7]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -493,7 +586,7 @@ func (x *ChatGetMessagesRequest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatGetMessagesRequest.ProtoReflect.Descriptor instead.
 func (*ChatGetMessagesRequest) Descriptor() ([]byte, []int) {
-	return file_chadbot_chat_proto_rawDescGZIP(), []int{6}
+	return file_chadbot_chat_proto_rawDescGZIP(), []int{7}
 }
 
 func (x *ChatGetMessagesRequest) GetRequestId() string {
@@ -529,7 +622,7 @@ type ChatGetMessagesResponse struct {
 
 func (x *ChatGetMessagesResponse) Reset() {
 	*x = ChatGetMessagesResponse{}
-	mi := &file_chadbot_chat_proto_msgTypes[7]
+	mi := &file_chadbot_chat_proto_msgTypes[8]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -541,7 +634,7 @@ func (x *ChatGetMessagesResponse) String() string {
 func (*ChatGetMessagesResponse) ProtoMessage() {}
 
 func (x *ChatGetMessagesResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_chadbot_chat_proto_msgTypes[7]
+	mi := &file_chadbot_chat_proto_msgTypes[8]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -554,7 +647,7 @@ func (x *ChatGetMessagesResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatGetMessagesResponse.ProtoReflect.Descriptor instead.
 func (*ChatGetMessagesResponse) Descriptor() ([]byte, []int) {
-	return file_chadbot_chat_proto_rawDescGZIP(), []int{7}
+	return file_chadbot_chat_proto_rawDescGZIP(), []int{8}
 }
 
 func (x *ChatGetMessagesResponse) GetRequestId() string {
@@ -593,13 +686,15 @@ type ChatMessage struct {
 	Role          string                 `protobuf:"bytes,3,opt,name=role,proto3" json:"role,omitempty"`
 	Content       string                 `protobuf:"bytes,4,opt,name=content,proto3" json:"content,omitempty"`
 	CreatedAt     string                 `protobuf:"bytes,5,opt,name=created_at,json=createdAt,proto3" json:"created_at,omitempty"`
+	DisplayOnly   bool                   `protobuf:"varint,6,opt,name=display_only,json=displayOnly,proto3" json:"display_only,omitempty"`
+	Attachments   []*Attachment          `protobuf:"bytes,7,rep,name=attachments,proto3" json:"attachments,omitempty"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
 }
 
 func (x *ChatMessage) Reset() {
 	*x = ChatMessage{}
-	mi := &file_chadbot_chat_proto_msgTypes[8]
+	mi := &file_chadbot_chat_proto_msgTypes[9]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -611,7 +706,7 @@ func (x *ChatMessage) String() string {
 func (*ChatMessage) ProtoMessage() {}
 
 func (x *ChatMessage) ProtoReflect() protoreflect.Message {
-	mi := &file_chadbot_chat_proto_msgTypes[8]
+	mi := &file_chadbot_chat_proto_msgTypes[9]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -624,7 +719,7 @@ func (x *ChatMessage) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use ChatMessage.ProtoReflect.Descriptor instead.
 func (*ChatMessage) Descriptor() ([]byte, []int) {
-	return file_chadbot_chat_proto_rawDescGZIP(), []int{8}
+	return file_chadbot_chat_proto_rawDescGZIP(), []int{9}
 }
 
 func (x *ChatMessage) GetId() string {
@@ -662,6 +757,20 @@ func (x *ChatMessage) GetCreatedAt() string {
 	return ""
 }
 
+func (x *ChatMessage) GetDisplayOnly() bool {
+	if x != nil {
+		return x.DisplayOnly
+	}
+	return false
+}
+
+func (x *ChatMessage) GetAttachments() []*Attachment {
+	if x != nil {
+		return x.Attachments
+	}
+	return nil
+}
+
 var File_chadbot_chat_proto protoreflect.FileDescriptor
 
 const file_chadbot_chat_proto_rawDesc = "" +
@@ -681,13 +790,22 @@ const file_chadbot_chat_proto_rawDesc = "" +
 	"\x05error\x18\x03 \x01(\tR\x05error\x12\x17\n" +
 	"\achat_id\x18\x04 \x01(\tR\x06chatId\x12\x12\n" +
 	"\x04name\x18\x05 \x01(\tR\x04name\x12\x18\n" +
-	"\acreated\x18\x06 \x01(\bR\acreated\"}\n" +
+	"\acreated\x18\x06 \x01(\bR\acreated\"\x7f\n" +
+	"\n" +
+	"Attachment\x12\x12\n" +
+	"\x04type\x18\x01 \x01(\tR\x04type\x12\x1b\n" +
+	"\tmime_type\x18\x02 \x01(\tR\bmimeType\x12\x12\n" +
+	"\x04data\x18\x03 \x01(\fR\x04data\x12\x10\n" +
+	"\x03url\x18\x04 \x01(\tR\x03url\x12\x1a\n" +
+	"\bfilename\x18\x05 \x01(\tR\bfilename\"\xd7\x01\n" +
 	"\x15ChatAddMessageRequest\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x17\n" +
 	"\achat_id\x18\x02 \x01(\tR\x06chatId\x12\x12\n" +
 	"\x04role\x18\x03 \x01(\tR\x04role\x12\x18\n" +
-	"\acontent\x18\x04 \x01(\tR\acontent\"\x86\x01\n" +
+	"\acontent\x18\x04 \x01(\tR\acontent\x12!\n" +
+	"\fdisplay_only\x18\x05 \x01(\bR\vdisplayOnly\x125\n" +
+	"\vattachments\x18\x06 \x03(\v2\x13.chadbot.AttachmentR\vattachments\"\x86\x01\n" +
 	"\x16ChatAddMessageResponse\x12\x1d\n" +
 	"\n" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x18\n" +
@@ -718,14 +836,16 @@ const file_chadbot_chat_proto_rawDesc = "" +
 	"request_id\x18\x01 \x01(\tR\trequestId\x12\x18\n" +
 	"\asuccess\x18\x02 \x01(\bR\asuccess\x12\x14\n" +
 	"\x05error\x18\x03 \x01(\tR\x05error\x120\n" +
-	"\bmessages\x18\x04 \x03(\v2\x14.chadbot.ChatMessageR\bmessages\"\x83\x01\n" +
+	"\bmessages\x18\x04 \x03(\v2\x14.chadbot.ChatMessageR\bmessages\"\xdd\x01\n" +
 	"\vChatMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12\x17\n" +
 	"\achat_id\x18\x02 \x01(\tR\x06chatId\x12\x12\n" +
 	"\x04role\x18\x03 \x01(\tR\x04role\x12\x18\n" +
 	"\acontent\x18\x04 \x01(\tR\acontent\x12\x1d\n" +
 	"\n" +
-	"created_at\x18\x05 \x01(\tR\tcreatedAtBz\n" +
+	"created_at\x18\x05 \x01(\tR\tcreatedAt\x12!\n" +
+	"\fdisplay_only\x18\x06 \x01(\bR\vdisplayOnly\x125\n" +
+	"\vattachments\x18\a \x03(\v2\x13.chadbot.AttachmentR\vattachmentsBz\n" +
 	"\vcom.chadbotB\tChatProtoP\x01Z$github.com/fipso/chadbot/gen/chadbot\xa2\x02\x03CXX\xaa\x02\aChadbot\xca\x02\aChadbot\xe2\x02\x13Chadbot\\GPBMetadata\xea\x02\aChadbotb\x06proto3"
 
 var (
@@ -740,25 +860,28 @@ func file_chadbot_chat_proto_rawDescGZIP() []byte {
 	return file_chadbot_chat_proto_rawDescData
 }
 
-var file_chadbot_chat_proto_msgTypes = make([]protoimpl.MessageInfo, 9)
+var file_chadbot_chat_proto_msgTypes = make([]protoimpl.MessageInfo, 10)
 var file_chadbot_chat_proto_goTypes = []any{
 	(*ChatGetOrCreateRequest)(nil),  // 0: chadbot.ChatGetOrCreateRequest
 	(*ChatGetOrCreateResponse)(nil), // 1: chadbot.ChatGetOrCreateResponse
-	(*ChatAddMessageRequest)(nil),   // 2: chadbot.ChatAddMessageRequest
-	(*ChatAddMessageResponse)(nil),  // 3: chadbot.ChatAddMessageResponse
-	(*ChatLLMRequest)(nil),          // 4: chadbot.ChatLLMRequest
-	(*ChatLLMResponse)(nil),         // 5: chadbot.ChatLLMResponse
-	(*ChatGetMessagesRequest)(nil),  // 6: chadbot.ChatGetMessagesRequest
-	(*ChatGetMessagesResponse)(nil), // 7: chadbot.ChatGetMessagesResponse
-	(*ChatMessage)(nil),             // 8: chadbot.ChatMessage
+	(*Attachment)(nil),              // 2: chadbot.Attachment
+	(*ChatAddMessageRequest)(nil),   // 3: chadbot.ChatAddMessageRequest
+	(*ChatAddMessageResponse)(nil),  // 4: chadbot.ChatAddMessageResponse
+	(*ChatLLMRequest)(nil),          // 5: chadbot.ChatLLMRequest
+	(*ChatLLMResponse)(nil),         // 6: chadbot.ChatLLMResponse
+	(*ChatGetMessagesRequest)(nil),  // 7: chadbot.ChatGetMessagesRequest
+	(*ChatGetMessagesResponse)(nil), // 8: chadbot.ChatGetMessagesResponse
+	(*ChatMessage)(nil),             // 9: chadbot.ChatMessage
 }
 var file_chadbot_chat_proto_depIdxs = []int32{
-	8, // 0: chadbot.ChatGetMessagesResponse.messages:type_name -> chadbot.ChatMessage
-	1, // [1:1] is the sub-list for method output_type
-	1, // [1:1] is the sub-list for method input_type
-	1, // [1:1] is the sub-list for extension type_name
-	1, // [1:1] is the sub-list for extension extendee
-	0, // [0:1] is the sub-list for field type_name
+	2, // 0: chadbot.ChatAddMessageRequest.attachments:type_name -> chadbot.Attachment
+	9, // 1: chadbot.ChatGetMessagesResponse.messages:type_name -> chadbot.ChatMessage
+	2, // 2: chadbot.ChatMessage.attachments:type_name -> chadbot.Attachment
+	3, // [3:3] is the sub-list for method output_type
+	3, // [3:3] is the sub-list for method input_type
+	3, // [3:3] is the sub-list for extension type_name
+	3, // [3:3] is the sub-list for extension extendee
+	0, // [0:3] is the sub-list for field type_name
 }
 
 func init() { file_chadbot_chat_proto_init() }
@@ -772,7 +895,7 @@ func file_chadbot_chat_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_chadbot_chat_proto_rawDesc), len(file_chadbot_chat_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   9,
+			NumMessages:   10,
 			NumExtensions: 0,
 			NumServices:   0,
 		},

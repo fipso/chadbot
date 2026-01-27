@@ -8,6 +8,7 @@ import { Promotion } from '@element-plus/icons-vue'
 const chatStore = useChatStore()
 const messageInput = ref('')
 const messagesContainer = ref<HTMLElement | null>(null)
+const inputRef = ref<InstanceType<typeof import('element-plus')['ElInput']> | null>(null)
 
 const messages = computed(() => chatStore.activeChat?.messages || [])
 
@@ -26,6 +27,7 @@ function handleSend() {
   if (messageInput.value.trim() && !chatStore.isLoading) {
     chatStore.sendMessage(messageInput.value)
     messageInput.value = ''
+    nextTick(() => inputRef.value?.focus())
   }
 }
 
@@ -68,6 +70,7 @@ function handleVoiceResult(text: string) {
       <el-card shadow="never" class="input-card">
         <div class="input-wrapper">
           <el-input
+            ref="inputRef"
             v-model="messageInput"
             type="textarea"
             :autosize="{ minRows: 1, maxRows: 4 }"

@@ -97,12 +97,7 @@ func (p *AnthropicProvider) Chat(ctx context.Context, messages []Message, tools 
 			args := make(map[string]string)
 			if block.Input != nil {
 				for k, v := range block.Input {
-					if s, ok := v.(string); ok {
-						args[k] = s
-					} else {
-						b, _ := json.Marshal(v)
-						args[k] = string(b)
-					}
+					args[k] = fmt.Sprintf("%v", v)
 				}
 			}
 			response.ToolCalls = append(response.ToolCalls, ToolCall{
