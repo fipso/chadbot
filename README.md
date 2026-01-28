@@ -13,18 +13,61 @@ A modular chat bot framework with plugin-based architecture, LLM integration, an
 - **Persistent Storage**: Per-plugin namespaced SQLite storage
 - **Configuration Management**: Plugin-specific config with live reload
 
-## Installation
+## Quick Start
+
+The recommended way to run chadbot is using **chadpm** (Plugin Manager):
 
 ```bash
-go build -o chadbot ./cmd/chadbot
+# Build and run everything
+go run ./cmd/chadpm
+
+# With file watching for development (auto-reload on changes)
+go run ./cmd/chadpm --watch
 ```
 
-## Usage
+This will:
+1. Build chadbot and all plugins
+2. Start chadbot
+3. Start all discovered plugins
+4. (with `--watch`) Monitor for file changes and auto-restart
+
+### chadpm Options
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--watch, -w` | `false` | Watch for file changes and auto-reload |
+| `--socket` | `/tmp/chadbot.sock` | Socket path for chadbot |
+| `--http` | `:8080` | HTTP address for chadbot |
+| `--plugins` | `./plugins` | Plugins directory |
+
+### Output
+
+chadpm provides unified colorized output from all processes:
+
+```
+[chadpm] Building chadbot...
+[chadpm] Building plugin: whatsapp
+[chadpm] Starting chadbot...
+[chadbot] 2026/01/28 00:15:00 [GRPC] Server listening on /tmp/chadbot.sock
+[whatsapp] 2026/01/28 00:15:01 Plugin registered successfully
+[chadpm] Watching for changes... (Ctrl+C to stop)
+```
+
+## Manual Usage
+
+If you prefer running components manually:
+
+### Building
+
+```bash
+go build -o ./bin/chadbot ./cmd/chadbot
+go build -o ./bin/plugins/whatsapp ./plugins/whatsapp
+```
 
 ### Starting the Server
 
 ```bash
-./chadbot [options]
+./bin/chadbot [options]
 ```
 
 **Options:**
@@ -43,12 +86,8 @@ go build -o chadbot ./cmd/chadbot
 Plugins are separate executables that connect to the server:
 
 ```bash
-# Set custom socket path (optional)
-export CHADBOT_SOCKET=/tmp/chadbot.sock
-
-# Run a plugin
-./plugins/whatsapp/whatsapp
-./plugins/mqtt/mqtt
+./bin/plugins/whatsapp
+./bin/plugins/mqtt
 ```
 
 ## IPC Plugin Structure
@@ -334,6 +373,25 @@ mcp_call_tool server=filesystem tool=list_directory arguments='{"path":"/tmp"}'
 mcp_disconnect name=filesystem
 ```
 
+### VPD (`plugins/vpd`)
+
+Vehicle Price Database integration for car valuation lookups.
+
+**Skills:**
+- `vpd_lookup` - Look up vehicle valuation by make, model, and year
+
+### XScroll (`plugins/xscroll`)
+
+X/Twitter infinite scroll automation using Chrome DevTools Protocol.
+
+**Skills:**
+- `xscroll_start` - Start scrolling a Twitter/X feed
+- `xscroll_stop` - Stop scrolling
+- `xscroll_status` - Get current scrolling status and collected tweets
+
+**Events emitted:**
+- `xscroll.tweet` - When a new tweet is collected
+
 ## Architecture
 
 ```
@@ -354,12 +412,12 @@ mcp_disconnect name=filesystem
 │  └────────────────────────────────────────────────────┘     │
 └───────────────────────────┬─────────────────────────────────┘
                             │ Unix Socket
-        ┌───────────────┬───────┴───────┬───────────────┐
-        │               │               │               │
-   ┌────────┐      ┌────────┐      ┌────────┐      ┌────────┐
-   │WhatsApp│      │  MQTT  │      │  MCP   │      │ Custom │
-   │ Plugin │      │ Plugin │      │ Plugin │      │ Plugin │
-   └────────┘      └────────┘      └────────┘      └────────┘
+    ┌───────────┬───────────┼───────────┬───────────┬───────────┐
+    │           │           │           │           │           │
+┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐ ┌────────┐
+│WhatsApp│ │  MQTT  │ │  MCP   │ │TextHook│ │  VPD   │ │XScroll │
+│ Plugin │ │ Plugin │ │ Plugin │ │ Plugin │ │ Plugin │ │ Plugin │
+└────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘
 ```
 
 ## License
