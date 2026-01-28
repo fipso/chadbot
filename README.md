@@ -7,7 +7,7 @@ A modular chat bot framework with plugin-based architecture, LLM integration, an
 ## Features
 
 - **Plugin Architecture**: Extensible via IPC plugins over Unix sockets
-- **LLM Integration**: OpenAI and Anthropic support with function calling
+- **LLM Integration**: OpenAI, Anthropic, and z.ai (GLM) support with function calling
 - **Multi-Platform**: WhatsApp, MQTT, and custom platforms via plugins
 - **Event System**: Pub/sub events with wildcard pattern matching
 - **Persistent Storage**: Per-plugin namespaced SQLite storage
@@ -79,7 +79,15 @@ go build -o ./bin/plugins/whatsapp ./plugins/whatsapp
 | `-db` | `chadbot.db` | SQLite database path |
 | `-openai-key` | `$OPENAI_API_KEY` | OpenAI API key |
 | `-anthropic-key` | `$ANTHROPIC_API_KEY` | Anthropic API key |
-| `-llm` | `openai` | Default LLM provider (openai/anthropic) |
+| `-llm` | `openai` | Default LLM provider (openai/anthropic/zai) |
+
+### LLM Providers
+
+| Provider | Env Variable | Models |
+|----------|--------------|--------|
+| OpenAI | `OPENAI_API_KEY` | gpt-4o, gpt-4o-mini, etc. |
+| Anthropic | `ANTHROPIC_API_KEY` | claude-3-5-sonnet, claude-3-haiku, etc. |
+| z.ai | `ZAI_API_KEY` | glm-4.7 (default), GLM models |
 
 ### Running Plugins
 
@@ -375,10 +383,12 @@ mcp_disconnect name=filesystem
 
 ### VPD (`plugins/vpd`)
 
-Vehicle Price Database integration for car valuation lookups.
+Vapor Pressure Deficit calculator for plant growing environments. Calculates VPD from temperature and humidity readings to help maintain optimal growing conditions.
 
 **Skills:**
-- `vpd_lookup` - Look up vehicle valuation by make, model, and year
+- `calculate_vpd` - Calculate VPD from temperature and humidity
+- `vpd_chart` - Generate a VPD chart image
+- `vpd_zones` - Get information about VPD zones for different growth stages
 
 ### XScroll (`plugins/xscroll`)
 
