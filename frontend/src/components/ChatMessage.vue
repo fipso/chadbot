@@ -48,6 +48,14 @@ const roleLabel = computed(() => {
   }
 })
 
+const modelInfo = computed(() => {
+  if (props.message.role !== 'assistant') return null
+  const parts: string[] = []
+  if (props.message.soul) parts.push(props.message.soul)
+  if (props.message.provider) parts.push(props.message.provider)
+  return parts.length > 0 ? parts.join(' · ') : null
+})
+
 const roleIcon = computed(() => {
   switch (props.message.role) {
     case 'user': return User
@@ -67,6 +75,7 @@ const roleIcon = computed(() => {
     <div class="message-content-wrapper">
       <div class="message-header">
         <span class="role-label">{{ roleLabel }}</span>
+        <span v-if="modelInfo" class="model-info">{{ modelInfo }}</span>
         <span class="timestamp">{{ formattedTime }}</span>
       </div>
       <!-- Message content with attachments inside -->
@@ -159,6 +168,14 @@ const roleIcon = computed(() => {
   font-size: 12px;
   font-weight: 600;
   color: var(--el-text-color-secondary);
+}
+
+.model-info {
+  font-size: 11px;
+  color: var(--el-color-primary);
+  padding: 1px 6px;
+  background: var(--el-color-primary-light-9);
+  border-radius: 4px;
 }
 
 .timestamp {

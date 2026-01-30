@@ -9,6 +9,7 @@ import (
 
 	pb "github.com/fipso/chadbot/gen/chadbot"
 	"github.com/fipso/chadbot/internal/chat"
+	"github.com/fipso/chadbot/internal/config"
 	"github.com/fipso/chadbot/internal/storage"
 )
 
@@ -17,14 +18,16 @@ type Handler struct {
 	manager        *Manager
 	chatService    *chat.Service
 	pluginStorages map[string]*storage.PluginStorage
+	pluginConfig   *config.PluginConfigManager
 }
 
 // NewHandler creates a new plugin handler
-func NewHandler(manager *Manager, chatService *chat.Service) *Handler {
+func NewHandler(manager *Manager, chatService *chat.Service, pluginConfig *config.PluginConfigManager) *Handler {
 	return &Handler{
 		manager:        manager,
 		chatService:    chatService,
 		pluginStorages: make(map[string]*storage.PluginStorage),
+		pluginConfig:   pluginConfig,
 	}
 }
 
@@ -266,17 +269,25 @@ func (h *Handler) handleConfigSchema(pluginID, pluginName string, schema *pb.Con
 	// Store schema in manager
 	h.manager.SetConfigSchema(pluginID, schema)
 
-	// Initialize default values for any config keys that don't exist
+	// Initialize all config fields from schema if they don't exist
+	// This ensures the config.toml file is created with all available options
+	existingConfigs := h.pluginConfig.GetPluginConfigs(pluginName)
+	newConfigs := make(map[string]string)
+
 	for _, field := range schema.Fields {
-		_, err := storage.GetPluginConfig(pluginName, field.Key)
-		if err != nil {
-			// Set default value
-			storage.SetPluginConfig(pluginName, field.Key, field.DefaultValue)
+		if _, exists := existingConfigs[field.Key]; !exists {
+			// Add default value (even if empty) so user can see the field in config.toml
+			newConfigs[field.Key] = field.DefaultValue
 		}
 	}
 
+	// Batch set new configs if any
+	if len(newConfigs) > 0 {
+		h.pluginConfig.SetPluginConfigs(pluginName, newConfigs)
+	}
+
 	// Send current config values back to plugin
-	values, _ := storage.GetPluginConfigs(pluginName)
+	values := h.pluginConfig.GetPluginConfigs(pluginName)
 	stream.Send(&pb.BackendMessage{
 		Payload: &pb.BackendMessage_ConfigGetResponse{
 			ConfigGetResponse: &pb.ConfigGetResponse{
@@ -288,14 +299,11 @@ func (h *Handler) handleConfigSchema(pluginID, pluginName string, schema *pb.Con
 }
 
 func (h *Handler) handleConfigGet(pluginName string, req *pb.ConfigGetRequest, stream pb.PluginService_ConnectServer) {
-	values, err := storage.GetPluginConfigs(pluginName)
-	resp := &pb.ConfigGetResponse{RequestId: req.RequestId}
-
-	if err != nil {
-		resp.Error = err.Error()
-	} else {
-		resp.Success = true
-		resp.Config = &pb.ConfigValues{Values: values}
+	values := h.pluginConfig.GetPluginConfigs(pluginName)
+	resp := &pb.ConfigGetResponse{
+		RequestId: req.RequestId,
+		Success:   true,
+		Config:    &pb.ConfigValues{Values: values},
 	}
 
 	stream.Send(&pb.BackendMessage{
@@ -305,20 +313,19 @@ func (h *Handler) handleConfigGet(pluginName string, req *pb.ConfigGetRequest, s
 
 // SetPluginConfig sets a config value and notifies the plugin
 func (h *Handler) SetPluginConfig(pluginName, key, value string) error {
-	// Find plugin by name
-	plugin, ok := h.manager.GetByName(pluginName)
-	if !ok {
-		// Plugin not connected, just save to DB
-		return storage.SetPluginConfig(pluginName, key, value)
-	}
-
-	// Save to DB
-	if err := storage.SetPluginConfig(pluginName, key, value); err != nil {
+	// Save to config file
+	if err := h.pluginConfig.SetPluginConfig(pluginName, key, value); err != nil {
 		return err
 	}
 
+	// Find plugin by name and notify if connected
+	plugin, ok := h.manager.GetByName(pluginName)
+	if !ok {
+		return nil // Plugin not connected, just saved to file
+	}
+
 	// Notify plugin
-	allValues, _ := storage.GetPluginConfigs(pluginName)
+	allValues := h.pluginConfig.GetPluginConfigs(pluginName)
 	return h.manager.NotifyConfigChanged(plugin.ID, key, value, allValues)
 }
 

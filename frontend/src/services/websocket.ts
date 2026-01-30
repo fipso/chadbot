@@ -19,6 +19,8 @@ export interface ChatMessagePayload {
   created_at: string
   display_only?: boolean
   attachments?: Attachment[]
+  soul?: string
+  provider?: string
 }
 
 type MessageHandler = (message: WSMessage) => void
@@ -90,8 +92,8 @@ class WebSocketService {
     this.ws.send(JSON.stringify({ type, payload }))
   }
 
-  sendChatMessage(chatId: string, content: string, provider?: string) {
-    this.send('chat.message', { chat_id: chatId, content, provider })
+  sendChatMessage(chatId: string, content: string, provider?: string, soul?: string) {
+    this.send('chat.message', { chat_id: chatId, content, provider, soul })
   }
 
   on(type: string, handler: MessageHandler) {

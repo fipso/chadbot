@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"log"
 	"net/http"
 	"strings"
@@ -15,9 +16,11 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 
 	pb "github.com/fipso/chadbot/gen/chadbot"
+	"github.com/fipso/chadbot/internal/config"
 	"github.com/fipso/chadbot/internal/event"
 	"github.com/fipso/chadbot/internal/llm"
 	"github.com/fipso/chadbot/internal/plugin"
+	"github.com/fipso/chadbot/internal/souls"
 	"github.com/fipso/chadbot/internal/storage"
 )
 
@@ -47,6 +50,7 @@ type IncomingChatMessage struct {
 	ChatID   string `json:"chat_id"`
 	Content  string `json:"content"`
 	Provider string `json:"provider,omitempty"`
+	Soul     string `json:"soul,omitempty"`
 }
 
 // CreateChatRequest for creating a new chat
@@ -62,18 +66,22 @@ type WebSocketServer struct {
 	llmRouter     *llm.Router
 	pluginManager *plugin.Manager
 	pluginHandler *plugin.Handler
+	soulsManager  *souls.Manager
+	pluginConfig  *config.PluginConfigManager
 	addr          string
 	server        *http.Server
 }
 
 // NewWebSocketServer creates a new WebSocket server
-func NewWebSocketServer(addr string, eventBus *event.Bus, llmRouter *llm.Router, pluginManager *plugin.Manager, pluginHandler *plugin.Handler) *WebSocketServer {
+func NewWebSocketServer(addr string, eventBus *event.Bus, llmRouter *llm.Router, pluginManager *plugin.Manager, pluginHandler *plugin.Handler, soulsManager *souls.Manager, pluginConfig *config.PluginConfigManager) *WebSocketServer {
 	ws := &WebSocketServer{
 		clients:       make(map[string]*WSClient),
 		eventBus:      eventBus,
 		llmRouter:     llmRouter,
 		pluginManager: pluginManager,
 		pluginHandler: pluginHandler,
+		soulsManager:  soulsManager,
+		pluginConfig:  pluginConfig,
 		addr:          addr,
 	}
 
@@ -98,6 +106,10 @@ func (s *WebSocketServer) Start() error {
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/providers", s.handleProviders)
 	mux.HandleFunc("/api/plugins/", s.handlePluginConfig)
+	mux.HandleFunc("/api/config/export", s.handleConfigExport)
+	mux.HandleFunc("/api/config/import", s.handleConfigImport)
+	mux.HandleFunc("/api/souls", s.handleSouls)
+	mux.HandleFunc("/api/souls/", s.handleSoulByName)
 
 	// Health check
 	mux.HandleFunc("/health", s.handleHealth)
@@ -235,6 +247,8 @@ func (s *WebSocketServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 					fieldType = "number"
 				case pb.ConfigFieldType_CONFIG_FIELD_TYPE_STRING:
 					fieldType = "string"
+				case pb.ConfigFieldType_CONFIG_FIELD_TYPE_STRING_ARRAY:
+					fieldType = "string_array"
 				}
 				schemaFields[j] = ConfigFieldInfo{
 					Key:          f.Key,
@@ -245,11 +259,8 @@ func (s *WebSocketServer) handleStatus(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			// Get current config values from storage
-			values, _ := storage.GetPluginConfigs(p.Name)
-			if values == nil {
-				values = make(map[string]string)
-			}
+			// Get current config values from config file
+			values := s.pluginConfig.GetPluginConfigs(p.Name)
 
 			pluginInfos[i].Config = &PluginConfigInfo{
 				Schema: schemaFields,
@@ -554,6 +565,7 @@ func (c *WSClient) handleChatMessage(msg IncomingChatMessage) {
 }
 
 func (c *WSClient) processWithLLM(msg IncomingChatMessage) {
+	log.Printf("[WebSocket] processWithLLM called with soul=%q provider=%q", msg.Soul, msg.Provider)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
@@ -585,32 +597,54 @@ func (c *WSClient) processWithLLM(msg IncomingChatMessage) {
 		}
 	}
 
-	chatCtx := &llm.ChatContext{ChatID: msg.ChatID, UserID: c.UserID}
-	resp, err := c.Server.llmRouter.Chat(ctx, messages, msg.Provider, chatCtx)
+	// Determine provider (use default if not specified)
+	provider := msg.Provider
+	if provider == "" {
+		providers := c.Server.llmRouter.ListProviders()
+		for _, p := range providers {
+			if p.IsDefault {
+				provider = p.Name
+				break
+			}
+		}
+	}
+
+	// Determine soul (use default if not specified)
+	soul := msg.Soul
+	if soul == "" {
+		soul = "default"
+	}
+
+	chatCtx := &llm.ChatContext{ChatID: msg.ChatID, UserID: c.UserID, Soul: soul}
+	resp, err := c.Server.llmRouter.Chat(ctx, messages, provider, chatCtx)
 	if err != nil {
 		log.Printf("[WebSocket] LLM error: %v", err)
 		c.send("chat.error", map[string]string{"error": err.Error()})
 		return
 	}
 
-	// Save assistant message to database
+	// Save assistant message to database with soul and provider info
 	assistantMsg := &storage.Message{
 		ID:        uuid.New().String(),
 		ChatID:    msg.ChatID,
 		Role:      "assistant",
 		Content:   resp.Content,
+		Soul:      soul,
+		Provider:  provider,
 		CreatedAt: time.Now(),
 	}
 	if err := storage.AddMessage(assistantMsg); err != nil {
 		log.Printf("[WebSocket] Failed to save assistant message: %v", err)
 	}
 
-	// Send response back
+	// Send response back with soul and provider info
 	c.send("chat.message", map[string]interface{}{
 		"id":         assistantMsg.ID,
 		"chat_id":    msg.ChatID,
 		"content":    resp.Content,
 		"role":       "assistant",
+		"soul":       soul,
+		"provider":   provider,
 		"created_at": assistantMsg.CreatedAt,
 	})
 
@@ -709,14 +743,7 @@ func (s *WebSocketServer) handlePluginConfig(w http.ResponseWriter, r *http.Requ
 	switch r.Method {
 	case http.MethodGet:
 		// Get plugin config values
-		values, err := storage.GetPluginConfigs(pluginName)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if values == nil {
-			values = make(map[string]string)
-		}
+		values := s.pluginConfig.GetPluginConfigs(pluginName)
 
 		// Also try to get schema from connected plugin
 		var schema []ConfigFieldInfo
@@ -732,6 +759,8 @@ func (s *WebSocketServer) handlePluginConfig(w http.ResponseWriter, r *http.Requ
 					fieldType = "number"
 				case pb.ConfigFieldType_CONFIG_FIELD_TYPE_STRING:
 					fieldType = "string"
+				case pb.ConfigFieldType_CONFIG_FIELD_TYPE_STRING_ARRAY:
+					fieldType = "string_array"
 				}
 				schema[i] = ConfigFieldInfo{
 					Key:          f.Key,
@@ -777,6 +806,208 @@ func (s *WebSocketServer) handlePluginConfig(w http.ResponseWriter, r *http.Requ
 	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
 	}
+}
+
+// handleConfigExport handles GET /api/config/export - exports all configs as TOML
+func (s *WebSocketServer) handleConfigExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	data, err := s.pluginConfig.ExportToTOML()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/toml")
+	w.Header().Set("Content-Disposition", "attachment; filename=chadbot-config.toml")
+	w.Write(data)
+}
+
+// handleConfigImport handles POST /api/config/import - imports configs from TOML
+func (s *WebSocketServer) handleConfigImport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	// Parse multipart form (max 1MB)
+	if err := r.ParseMultipartForm(1 << 20); err != nil {
+		http.Error(w, "Failed to parse form: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	file, _, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Failed to get file: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	data, err := io.ReadAll(file)
+	if err != nil {
+		http.Error(w, "Failed to read file: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if err := s.pluginConfig.ImportFromTOML(data); err != nil {
+		http.Error(w, "Failed to import config: "+err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Notify connected plugins of config changes
+	s.notifyPluginsConfigChanged()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Config imported successfully",
+	})
+}
+
+// notifyPluginsConfigChanged notifies all connected plugins that their config may have changed
+func (s *WebSocketServer) notifyPluginsConfigChanged() {
+	plugins := s.pluginManager.List()
+	for _, p := range plugins {
+		values := s.pluginConfig.GetPluginConfigs(p.Name)
+		// Notify each plugin through the handler
+		for key, value := range values {
+			s.pluginHandler.SetPluginConfig(p.Name, key, value)
+		}
+	}
+}
+
+// SoulInfo represents a soul for JSON responses
+type SoulInfo struct {
+	Name    string `json:"name"`
+	Content string `json:"content"`
+}
+
+// handleSouls handles GET /api/souls (list) and POST /api/souls (create)
+func (s *WebSocketServer) handleSouls(w http.ResponseWriter, r *http.Request) {
+	if s.soulsManager == nil {
+		http.Error(w, "Souls not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		soulsList, err := s.soulsManager.List()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		result := make([]SoulInfo, len(soulsList))
+		for i, soul := range soulsList {
+			result[i] = SoulInfo{
+				Name:    soul.Name,
+				Content: soul.Content,
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(result)
+
+	case http.MethodPost:
+		var soul souls.Soul
+		if err := json.NewDecoder(r.Body).Decode(&soul); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		if soul.Name == "" {
+			http.Error(w, "Name is required", http.StatusBadRequest)
+			return
+		}
+
+		if err := s.soulsManager.Save(&soul); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"name":    soul.Name,
+		})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleSoulByName handles GET/PUT/DELETE /api/souls/{name}
+func (s *WebSocketServer) handleSoulByName(w http.ResponseWriter, r *http.Request) {
+	if s.soulsManager == nil {
+		http.Error(w, "Souls not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	// Extract soul name from URL: /api/souls/{name}
+	path := strings.TrimPrefix(r.URL.Path, "/api/souls/")
+	name := strings.TrimSuffix(path, "/")
+
+	if name == "" {
+		http.Error(w, "Soul name required", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		soul, err := s.soulsManager.Get(name)
+		if err != nil {
+			http.Error(w, "Soul not found", http.StatusNotFound)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(SoulInfo{
+			Name:    soul.Name,
+			Content: soul.Content,
+		})
+
+	case http.MethodPut:
+		var soul souls.Soul
+		if err := json.NewDecoder(r.Body).Decode(&soul); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+
+		soul.Name = name // Use URL name
+		if err := s.soulsManager.Save(&soul); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+			"name":    soul.Name,
+		})
+
+	case http.MethodDelete:
+		if err := s.soulsManager.Delete(name); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": true,
+		})
+
+	default:
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleActiveSoul is no longer used - souls are selected per-message
+func (s *WebSocketServer) handleActiveSoul(w http.ResponseWriter, r *http.Request) {
+	http.Error(w, "Active soul endpoint deprecated - souls are now selected per-message", http.StatusGone)
 }
 
 func (s *WebSocketServer) broadcastEvent(event *pb.Event) {
@@ -864,6 +1095,12 @@ func (s *WebSocketServer) BroadcastMessage(chatID string, msg *storage.Message, 
 	}
 	if len(jsonAttachments) > 0 {
 		payload["attachments"] = jsonAttachments
+	}
+	if msg.Soul != "" {
+		payload["soul"] = msg.Soul
+	}
+	if msg.Provider != "" {
+		payload["provider"] = msg.Provider
 	}
 
 	s.Broadcast("chat.message", payload)

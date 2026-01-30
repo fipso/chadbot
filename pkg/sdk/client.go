@@ -2,6 +2,7 @@ package sdk
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
@@ -866,4 +867,19 @@ func (c *Client) GetAllConfig() map[string]string {
 		result[k] = v
 	}
 	return result
+}
+
+// GetConfigStringArray returns a config value parsed as a string array
+// The value is expected to be stored as a JSON array string
+func (c *Client) GetConfigStringArray(key string) []string {
+	value := c.GetConfig(key)
+	if value == "" {
+		return nil
+	}
+
+	var arr []string
+	if err := json.Unmarshal([]byte(value), &arr); err != nil {
+		return nil
+	}
+	return arr
 }

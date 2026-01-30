@@ -12,6 +12,7 @@ import (
 
 	pb "github.com/fipso/chadbot/gen/chadbot"
 	"github.com/fipso/chadbot/internal/plugin"
+	"github.com/fipso/chadbot/internal/souls"
 )
 
 // Provider represents an LLM provider
@@ -61,18 +62,20 @@ type DeferredAttachment struct {
 
 // Router routes requests to LLM providers and handles skill invocation
 type Router struct {
-	providers map[string]Provider
-	manager   *plugin.Manager
-	registry  *plugin.Registry
+	providers       map[string]Provider
+	manager         *plugin.Manager
+	registry        *plugin.Registry
+	souls           *souls.Manager
 	defaultProvider string
 }
 
 // NewRouter creates a new LLM router
-func NewRouter(manager *plugin.Manager, registry *plugin.Registry) *Router {
+func NewRouter(manager *plugin.Manager, registry *plugin.Registry, soulsManager *souls.Manager) *Router {
 	return &Router{
 		providers: make(map[string]Provider),
 		manager:   manager,
 		registry:  registry,
+		souls:     soulsManager,
 	}
 }
 
@@ -112,7 +115,7 @@ func (r *Router) ListProviders() []ProviderInfo {
 	return result
 }
 
-// DefaultSystemPrompt is prepended to all conversations
+// DefaultSystemPrompt is prepended to all conversations (fallback if no soul is active)
 const DefaultSystemPrompt = `You are a helpful AI assistant. You have access to tools/skills provided by plugins.
 IMPORTANT: Only use the tools that are explicitly provided to you. Do not make up or hallucinate tools that don't exist.
 If asked what tools you have, list ONLY the ones provided in the current conversation - nothing else.
@@ -124,7 +127,10 @@ When using tools to extract or gather data, be efficient with token usage:
 - If a tool returns a large response, focus on the relevant parts in your answer`
 
 // buildSystemPrompt creates the base system prompt (without plugin docs)
-func (r *Router) buildSystemPrompt() string {
+func (r *Router) buildSystemPrompt(soulName string) string {
+	if r.souls != nil {
+		return r.souls.GetSystemPrompt(soulName)
+	}
 	return DefaultSystemPrompt
 }
 
@@ -141,6 +147,7 @@ func (r *Router) getPluginDocumentation(pluginName string) string {
 type ChatContext struct {
 	ChatID string
 	UserID string
+	Soul   string // Soul name for system prompt
 }
 
 // Chat processes a chat request with tool calling loop
@@ -154,7 +161,11 @@ func (r *Router) Chat(ctx context.Context, messages []Message, providerName stri
 	}
 
 	// Prepend system prompt (without plugin docs - those are added on-demand)
-	systemPrompt := r.buildSystemPrompt()
+	soulName := ""
+	if chatCtx != nil {
+		soulName = chatCtx.Soul
+	}
+	systemPrompt := r.buildSystemPrompt(soulName)
 	messages = append([]Message{{Role: "system", Content: systemPrompt}}, messages...)
 
 	// Convert skills to tools

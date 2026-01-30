@@ -8,9 +8,11 @@ import (
 	"syscall"
 
 	"github.com/fipso/chadbot/internal/chat"
+	appconfig "github.com/fipso/chadbot/internal/config"
 	"github.com/fipso/chadbot/internal/event"
 	"github.com/fipso/chadbot/internal/llm"
 	"github.com/fipso/chadbot/internal/plugin"
+	"github.com/fipso/chadbot/internal/souls"
 	"github.com/fipso/chadbot/internal/storage"
 )
 
@@ -58,14 +60,16 @@ type Config struct {
 
 // Server is the main chadbot server
 type Server struct {
-	config    *Config
-	grpc      *GRPCServer
-	ws        *WebSocketServer
-	manager   *plugin.Manager
-	registry  *plugin.Registry
-	eventBus  *event.Bus
-	llmRouter *llm.Router
-	handler   *plugin.Handler
+	config       *Config
+	grpc         *GRPCServer
+	ws           *WebSocketServer
+	manager      *plugin.Manager
+	registry     *plugin.Registry
+	eventBus     *event.Bus
+	llmRouter    *llm.Router
+	handler      *plugin.Handler
+	souls        *souls.Manager
+	pluginConfig *appconfig.PluginConfigManager
 }
 
 // New creates a new server instance
@@ -90,14 +94,26 @@ func New(config *Config) *Server {
 	eventBus := event.NewBus()
 	manager := plugin.NewManager(registry, eventBus)
 
+	// Initialize souls manager (stores system prompts in ~/.config/chadbot/souls/)
+	soulsManager, err := souls.NewManager()
+	if err != nil {
+		log.Printf("[Server] Warning: Failed to initialize souls manager: %v", err)
+	}
+
+	// Initialize plugin config manager (stores plugin configs in ~/.config/chadbot/config.toml)
+	pluginConfigManager, err := appconfig.NewPluginConfigManager()
+	if err != nil {
+		log.Printf("[Server] Warning: Failed to initialize plugin config manager: %v", err)
+	}
+
 	// Create LLM router
-	llmRouter := llm.NewRouter(manager, registry)
+	llmRouter := llm.NewRouter(manager, registry, soulsManager)
 
 	// Create chat service (reuses same logic as web UI)
 	chatService := chat.NewService(&llmAdapter{router: llmRouter})
 
-	// Create handler with chat service
-	handler := plugin.NewHandler(manager, chatService)
+	// Create handler with chat service and plugin config
+	handler := plugin.NewHandler(manager, chatService, pluginConfigManager)
 
 	// Register LLM providers
 	if config.OpenAIKey != "" || os.Getenv("OPENAI_API_KEY") != "" {
@@ -115,20 +131,22 @@ func New(config *Config) *Server {
 
 	// Create servers
 	grpc := NewGRPCServer(handler, config.Socket)
-	ws := NewWebSocketServer(config.HTTPAddr, eventBus, llmRouter, manager, handler)
+	ws := NewWebSocketServer(config.HTTPAddr, eventBus, llmRouter, manager, handler, soulsManager, pluginConfigManager)
 
 	// Wire up WebSocket as message broadcaster for real-time plugin message updates
 	chatService.SetBroadcaster(ws)
 
 	return &Server{
-		config:    config,
-		grpc:      grpc,
-		ws:        ws,
-		manager:   manager,
-		registry:  registry,
-		eventBus:  eventBus,
-		llmRouter: llmRouter,
-		handler:   handler,
+		config:       config,
+		grpc:         grpc,
+		ws:           ws,
+		manager:      manager,
+		registry:     registry,
+		eventBus:     eventBus,
+		llmRouter:    llmRouter,
+		handler:      handler,
+		souls:        soulsManager,
+		pluginConfig: pluginConfigManager,
 	}
 }
 

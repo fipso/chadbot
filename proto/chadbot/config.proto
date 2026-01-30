@@ -10,6 +10,7 @@ enum ConfigFieldType {
   CONFIG_FIELD_TYPE_BOOL = 1;
   CONFIG_FIELD_TYPE_STRING = 2;
   CONFIG_FIELD_TYPE_NUMBER = 3;
+  CONFIG_FIELD_TYPE_STRING_ARRAY = 4;
 }
 
 // Config field definition (schema)

@@ -2,7 +2,7 @@ import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
 import { wsService, type WSMessage, type ChatMessagePayload, type Attachment } from '../services/websocket'
 import * as api from '../services/api'
-import type { Provider } from '../services/api'
+import type { Provider, Soul } from '../services/api'
 
 export interface ChatMessage {
   id: string
@@ -12,6 +12,8 @@ export interface ChatMessage {
   created_at: string
   display_only?: boolean
   attachments?: Attachment[]
+  soul?: string
+  provider?: string
 }
 
 export interface Chat {
@@ -29,6 +31,8 @@ export const useChatStore = defineStore('chat', () => {
   const isLoading = ref(false)
   const providers = ref<Provider[]>([])
   const selectedProvider = ref<string>('')
+  const souls = ref<Soul[]>([])
+  const selectedSoul = ref<string>('default')
 
   const activeChat = computed(() => {
     if (!activeChatId.value) return null
@@ -63,7 +67,9 @@ export const useChatStore = defineStore('chat', () => {
           role: m.role,
           created_at: m.created_at,
           display_only: m.display_only,
-          attachments: parseAttachments(m.attachments)
+          attachments: parseAttachments(m.attachments),
+          soul: m.soul,
+          provider: m.provider
         }))
         chats.value.set(chat.id, {
           id: chat.id,
@@ -153,8 +159,29 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  async function loadSouls() {
+    try {
+      souls.value = await api.fetchSouls()
+      // Set default soul if not set
+      if (!selectedSoul.value || !souls.value.find(s => s.name === selectedSoul.value)) {
+        const defaultSoul = souls.value.find(s => s.name === 'default')
+        if (defaultSoul) {
+          selectedSoul.value = 'default'
+        } else if (souls.value.length > 0) {
+          selectedSoul.value = souls.value[0].name
+        }
+      }
+    } catch (error) {
+      console.error('[Chat] Failed to load souls:', error)
+    }
+  }
+
   function setProvider(provider: string) {
     selectedProvider.value = provider
+  }
+
+  function setSoul(soul: string) {
+    selectedSoul.value = soul
   }
 
   async function sendMessage(content: string) {
@@ -175,8 +202,8 @@ export const useChatStore = defineStore('chat', () => {
 
     isLoading.value = true
 
-    // Send via WebSocket with selected provider
-    wsService.sendChatMessage(activeChatId.value, content, selectedProvider.value)
+    // Send via WebSocket with selected provider and soul
+    wsService.sendChatMessage(activeChatId.value, content, selectedProvider.value, selectedSoul.value)
   }
 
   async function connect() {
@@ -195,7 +222,9 @@ export const useChatStore = defineStore('chat', () => {
             role: payload.role,
             created_at: payload.created_at,
             display_only: payload.display_only,
-            attachments: payload.attachments
+            attachments: payload.attachments,
+            soul: payload.soul,
+            provider: payload.provider
           })
           if (payload.role === 'assistant') {
             isLoading.value = false
@@ -208,8 +237,8 @@ export const useChatStore = defineStore('chat', () => {
         isLoading.value = false
       })
 
-      // Load chats and providers from server
-      await Promise.all([loadChats(), loadProviders()])
+      // Load chats, providers, and souls from server
+      await Promise.all([loadChats(), loadProviders(), loadSouls()])
 
       // Create initial chat if none exists
       if (chats.value.size === 0) {
@@ -235,8 +264,11 @@ export const useChatStore = defineStore('chat', () => {
     isLoading,
     providers,
     selectedProvider,
+    souls,
+    selectedSoul,
     loadChats,
     loadProviders,
+    loadSouls,
     createChat,
     setActiveChat,
     deleteChat,
@@ -244,6 +276,7 @@ export const useChatStore = defineStore('chat', () => {
     addMessage,
     sendMessage,
     setProvider,
+    setSoul,
     connect,
     disconnect
   }

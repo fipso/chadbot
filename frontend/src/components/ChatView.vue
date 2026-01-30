@@ -67,6 +67,34 @@ function handleVoiceResult(text: string) {
     </div>
 
     <div class="input-area">
+      <div class="input-options">
+        <el-select
+          v-model="chatStore.selectedSoul"
+          size="small"
+          placeholder="Soul"
+          class="soul-select"
+        >
+          <el-option
+            v-for="soul in chatStore.souls"
+            :key="soul.name"
+            :label="soul.name"
+            :value="soul.name"
+          />
+        </el-select>
+        <el-select
+          v-model="chatStore.selectedProvider"
+          size="small"
+          placeholder="Provider"
+          class="provider-select"
+        >
+          <el-option
+            v-for="provider in chatStore.providers"
+            :key="provider.name"
+            :label="provider.name"
+            :value="provider.name"
+          />
+        </el-select>
+      </div>
       <el-card shadow="never" class="input-card">
         <div class="input-wrapper">
           <el-input
@@ -158,6 +186,17 @@ function handleVoiceResult(text: string) {
 .input-area {
   padding: 16px 24px;
   background: var(--el-bg-color-page);
+}
+
+.input-options {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.soul-select,
+.provider-select {
+  width: 140px;
 }
 
 .input-card {

@@ -25,8 +25,10 @@ type Message struct {
 	ChatID      string    `gorm:"index" json:"chat_id"`
 	Role        string    `json:"role"` // "user", "assistant", or "plugin"
 	Content     string    `json:"content"`
-	DisplayOnly bool      `json:"display_only"` // If true, not sent to LLM
-	Attachments string    `json:"attachments"`  // JSON array of attachments
+	DisplayOnly bool      `json:"display_only"`       // If true, not sent to LLM
+	Attachments string    `json:"attachments"`        // JSON array of attachments
+	Soul        string    `json:"soul,omitempty"`     // Soul used for this response
+	Provider    string    `json:"provider,omitempty"` // LLM provider used for this response
 	CreatedAt   time.Time `json:"created_at"`
 }
 

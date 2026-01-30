@@ -25,6 +25,8 @@ export interface Message {
   created_at: string
   display_only?: boolean
   attachments?: string  // JSON string of Attachment[] from backend
+  soul?: string
+  provider?: string
 }
 
 export async function fetchChats(): Promise<Chat[]> {
@@ -85,7 +87,7 @@ export interface ConfigField {
   key: string
   label: string
   description: string
-  type: 'bool' | 'string' | 'number'
+  type: 'bool' | 'string' | 'number' | 'string_array'
   default_value: string
 }
 
@@ -132,4 +134,63 @@ export async function fetchProviders(): Promise<Provider[]> {
   const res = await fetch(`${API_BASE}/api/providers`)
   if (!res.ok) throw new Error('Failed to fetch providers')
   return res.json()
+}
+
+export async function exportConfig(): Promise<Blob> {
+  const res = await fetch(`${API_BASE}/api/config/export`)
+  if (!res.ok) throw new Error('Failed to export config')
+  return res.blob()
+}
+
+export async function importConfig(file: File): Promise<void> {
+  const formData = new FormData()
+  formData.append('file', file)
+  const res = await fetch(`${API_BASE}/api/config/import`, {
+    method: 'POST',
+    body: formData
+  })
+  if (!res.ok) throw new Error('Failed to import config')
+}
+
+// Souls API
+export interface Soul {
+  name: string
+  content: string
+}
+
+export async function fetchSouls(): Promise<Soul[]> {
+  const res = await fetch(`${API_BASE}/api/souls`)
+  if (!res.ok) throw new Error('Failed to fetch souls')
+  return res.json()
+}
+
+export async function fetchSoul(name: string): Promise<Soul> {
+  const res = await fetch(`${API_BASE}/api/souls/${encodeURIComponent(name)}`)
+  if (!res.ok) throw new Error('Failed to fetch soul')
+  return res.json()
+}
+
+export async function createSoul(name: string, content: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/souls`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, content })
+  })
+  if (!res.ok) throw new Error('Failed to create soul')
+}
+
+export async function updateSoul(name: string, content: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/souls/${encodeURIComponent(name)}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ content })
+  })
+  if (!res.ok) throw new Error('Failed to update soul')
+}
+
+export async function deleteSoul(name: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/souls/${encodeURIComponent(name)}`, {
+    method: 'DELETE'
+  })
+  if (!res.ok) throw new Error('Failed to delete soul')
 }

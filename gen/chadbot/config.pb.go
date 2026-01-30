@@ -25,10 +25,11 @@ const (
 type ConfigFieldType int32
 
 const (
-	ConfigFieldType_CONFIG_FIELD_TYPE_UNSPECIFIED ConfigFieldType = 0
-	ConfigFieldType_CONFIG_FIELD_TYPE_BOOL        ConfigFieldType = 1
-	ConfigFieldType_CONFIG_FIELD_TYPE_STRING      ConfigFieldType = 2
-	ConfigFieldType_CONFIG_FIELD_TYPE_NUMBER      ConfigFieldType = 3
+	ConfigFieldType_CONFIG_FIELD_TYPE_UNSPECIFIED  ConfigFieldType = 0
+	ConfigFieldType_CONFIG_FIELD_TYPE_BOOL         ConfigFieldType = 1
+	ConfigFieldType_CONFIG_FIELD_TYPE_STRING       ConfigFieldType = 2
+	ConfigFieldType_CONFIG_FIELD_TYPE_NUMBER       ConfigFieldType = 3
+	ConfigFieldType_CONFIG_FIELD_TYPE_STRING_ARRAY ConfigFieldType = 4
 )
 
 // Enum value maps for ConfigFieldType.
@@ -38,12 +39,14 @@ var (
 		1: "CONFIG_FIELD_TYPE_BOOL",
 		2: "CONFIG_FIELD_TYPE_STRING",
 		3: "CONFIG_FIELD_TYPE_NUMBER",
+		4: "CONFIG_FIELD_TYPE_STRING_ARRAY",
 	}
 	ConfigFieldType_value = map[string]int32{
-		"CONFIG_FIELD_TYPE_UNSPECIFIED": 0,
-		"CONFIG_FIELD_TYPE_BOOL":        1,
-		"CONFIG_FIELD_TYPE_STRING":      2,
-		"CONFIG_FIELD_TYPE_NUMBER":      3,
+		"CONFIG_FIELD_TYPE_UNSPECIFIED":  0,
+		"CONFIG_FIELD_TYPE_BOOL":         1,
+		"CONFIG_FIELD_TYPE_STRING":       2,
+		"CONFIG_FIELD_TYPE_NUMBER":       3,
+		"CONFIG_FIELD_TYPE_STRING_ARRAY": 4,
 	}
 )
 
@@ -595,12 +598,13 @@ const file_chadbot_config_proto_rawDesc = "" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value\x124\n" +
 	"\n" +
-	"all_values\x18\x03 \x01(\v2\x15.chadbot.ConfigValuesR\tallValues*\x8c\x01\n" +
+	"all_values\x18\x03 \x01(\v2\x15.chadbot.ConfigValuesR\tallValues*\xb0\x01\n" +
 	"\x0fConfigFieldType\x12!\n" +
 	"\x1dCONFIG_FIELD_TYPE_UNSPECIFIED\x10\x00\x12\x1a\n" +
 	"\x16CONFIG_FIELD_TYPE_BOOL\x10\x01\x12\x1c\n" +
 	"\x18CONFIG_FIELD_TYPE_STRING\x10\x02\x12\x1c\n" +
-	"\x18CONFIG_FIELD_TYPE_NUMBER\x10\x03B|\n" +
+	"\x18CONFIG_FIELD_TYPE_NUMBER\x10\x03\x12\"\n" +
+	"\x1eCONFIG_FIELD_TYPE_STRING_ARRAY\x10\x04B|\n" +
 	"\vcom.chadbotB\vConfigProtoP\x01Z$github.com/fipso/chadbot/gen/chadbot\xa2\x02\x03CXX\xaa\x02\aChadbot\xca\x02\aChadbot\xe2\x02\x13Chadbot\\GPBMetadata\xea\x02\aChadbotb\x06proto3"
 
 var (

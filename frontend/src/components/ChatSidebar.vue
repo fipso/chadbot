@@ -2,7 +2,7 @@
 import { ref, nextTick } from 'vue'
 import { useRouter } from 'vue-router'
 import { useChatStore } from '../stores/chat'
-import { ChatLineRound, Plus, Setting, Delete, Edit } from '@element-plus/icons-vue'
+import { ChatLineRound, Plus, Setting, Delete, Edit, User } from '@element-plus/icons-vue'
 
 const router = useRouter()
 const chatStore = useChatStore()
@@ -67,22 +67,11 @@ function handleKeydown(e: KeyboardEvent) {
         <el-icon><Setting /></el-icon>
         System Status
       </el-button>
-    </div>
 
-    <div v-if="chatStore.providers.length > 0" class="model-selector">
-      <el-select
-        :model-value="chatStore.selectedProvider"
-        @change="(val: string) => chatStore.setProvider(val)"
-        placeholder="Select Model"
-        size="default"
-      >
-        <el-option
-          v-for="provider in chatStore.providers"
-          :key="provider.name"
-          :label="`${provider.name}${provider.is_default ? ' (default)' : ''}`"
-          :value="provider.name"
-        />
-      </el-select>
+      <el-button class="status-btn" @click="router.push('/souls')">
+        <el-icon><User /></el-icon>
+        Souls
+      </el-button>
     </div>
 
     <el-divider />
@@ -190,14 +179,6 @@ function handleKeydown(e: KeyboardEvent) {
   width: 100%;
   justify-content: flex-start;
   margin-left: 0;
-}
-
-.model-selector {
-  margin-bottom: 8px;
-}
-
-.model-selector .el-select {
-  width: 100%;
 }
 
 .el-divider {

@@ -161,3 +161,30 @@ func SetPluginConfig(pluginName, key, value string) error {
 	config.Value = value
 	return DB.Save(&config).Error
 }
+
+// GetAllPluginConfigs fetches all configs for all plugins
+func GetAllPluginConfigs() (map[string]map[string]string, error) {
+	var configs []PluginConfig
+	if err := DB.Find(&configs).Error; err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]map[string]string)
+	for _, c := range configs {
+		if result[c.PluginName] == nil {
+			result[c.PluginName] = make(map[string]string)
+		}
+		result[c.PluginName][c.Key] = c.Value
+	}
+	return result, nil
+}
+
+// SetPluginConfigs batch updates config values for a plugin
+func SetPluginConfigs(pluginName string, values map[string]string) error {
+	for key, value := range values {
+		if err := SetPluginConfig(pluginName, key, value); err != nil {
+			return err
+		}
+	}
+	return nil
+}

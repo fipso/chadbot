@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import * as api from '../services/api'
-import { ArrowLeft, Refresh, Connection, Tools, Setting } from '@element-plus/icons-vue'
+import { ArrowLeft, Refresh, Connection, Tools, Setting, Download, Upload, Plus, Check } from '@element-plus/icons-vue'
+import { ElMessage } from 'element-plus'
 
 interface SkillParam {
   name: string
@@ -23,7 +24,7 @@ interface ConfigField {
   key: string
   label: string
   description: string
-  type: 'bool' | 'string' | 'number'
+  type: 'bool' | 'string' | 'number' | 'string_array'
   default_value: string
 }
 
@@ -51,6 +52,14 @@ const status = ref<StatusData | null>(null)
 const loading = ref(true)
 const error = ref<string | null>(null)
 const savingConfig = ref<string | null>(null)
+const savedConfig = ref<string | null>(null)
+const newArrayItem = ref<Record<string, string>>({})
+const fileInputRef = ref<HTMLInputElement | null>(null)
+
+// Debounce timers
+// Track local input values, pending values and debounce timers (non-reactive to avoid re-renders)
+const localInputValues: Record<string, string> = {}
+const debounceTimers: Record<string, ReturnType<typeof setTimeout>> = {}
 
 async function loadStatus() {
   loading.value = true
@@ -64,26 +73,144 @@ async function loadStatus() {
   }
 }
 
-async function updateConfig(pluginName: string, key: string, value: string) {
-  savingConfig.value = `${pluginName}:${key}`
+async function saveConfig(pluginName: string, key: string, value: string) {
+  const configKey = `${pluginName}:${key}`
   try {
     await api.setPluginConfig(pluginName, key, value)
+    // Update local state after successful save
     if (status.value) {
       const plugin = status.value.plugins.find(p => p.name === pluginName)
       if (plugin?.config) {
         plugin.config.values[key] = value
       }
     }
+    savedConfig.value = configKey
+    setTimeout(() => {
+      if (savedConfig.value === configKey) {
+        savedConfig.value = null
+      }
+    }, 2000)
   } catch (e) {
-    error.value = e instanceof Error ? e.message : 'Failed to update config'
-  } finally {
-    savingConfig.value = null
+    ElMessage.error(e instanceof Error ? e.message : 'Failed to update config')
   }
+}
+
+function updateConfigDebounced(pluginName: string, key: string, value: string, delay = 500) {
+  const configKey = `${pluginName}:${key}`
+
+  // Clear existing timer
+  if (debounceTimers[configKey]) {
+    clearTimeout(debounceTimers[configKey])
+  }
+
+  // Store local value (non-reactive, won't cause re-render)
+  localInputValues[configKey] = value
+
+  // Debounce the API call
+  debounceTimers[configKey] = setTimeout(() => {
+    saveConfig(pluginName, key, localInputValues[configKey])
+    delete debounceTimers[configKey]
+    delete localInputValues[configKey]
+  }, delay)
+}
+
+function updateConfigImmediate(pluginName: string, key: string, value: string) {
+  // Update local state
+  if (status.value) {
+    const plugin = status.value.plugins.find(p => p.name === pluginName)
+    if (plugin?.config) {
+      plugin.config.values[key] = value
+    }
+  }
+  // Save immediately
+  saveConfig(pluginName, key, value)
 }
 
 function onToggle(pluginName: string, key: string, currentValue: string) {
   const newValue = currentValue === 'true' ? 'false' : 'true'
-  updateConfig(pluginName, key, newValue)
+  updateConfigImmediate(pluginName, key, newValue)
+}
+
+// Cleanup timers on unmount
+onUnmounted(() => {
+  Object.values(debounceTimers.value).forEach(timer => clearTimeout(timer))
+})
+
+function parseArray(value: string | undefined): string[] {
+  if (!value) return []
+  try {
+    const arr = JSON.parse(value)
+    return Array.isArray(arr) ? arr : []
+  } catch {
+    return []
+  }
+}
+
+function addArrayItem(pluginName: string, key: string) {
+  const itemKey = `${pluginName}:${key}`
+  const newItem = newArrayItem.value[itemKey]?.trim()
+  if (!newItem) return
+
+  const plugin = status.value?.plugins.find(p => p.name === pluginName)
+  if (!plugin?.config) return
+
+  const currentArray = parseArray(plugin.config.values[key])
+  if (currentArray.includes(newItem)) {
+    ElMessage.warning('Item already exists')
+    return
+  }
+
+  currentArray.push(newItem)
+  const newValue = JSON.stringify(currentArray)
+  updateConfigImmediate(pluginName, key, newValue)
+  newArrayItem.value[itemKey] = ''
+}
+
+function removeArrayItem(pluginName: string, key: string, index: number) {
+  const plugin = status.value?.plugins.find(p => p.name === pluginName)
+  if (!plugin?.config) return
+
+  const currentArray = parseArray(plugin.config.values[key])
+  currentArray.splice(index, 1)
+  const newValue = JSON.stringify(currentArray)
+  updateConfigImmediate(pluginName, key, newValue)
+}
+
+async function handleExport() {
+  try {
+    const blob = await api.exportConfig()
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = 'chadbot-config.toml'
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+    ElMessage.success('Config exported successfully')
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : 'Failed to export config')
+  }
+}
+
+function triggerImport() {
+  fileInputRef.value?.click()
+}
+
+async function handleImport(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+
+  try {
+    await api.importConfig(file)
+    ElMessage.success('Config imported successfully')
+    await loadStatus()
+  } catch (e) {
+    ElMessage.error(e instanceof Error ? e.message : 'Failed to import config')
+  } finally {
+    input.value = ''
+  }
 }
 
 onMounted(() => {
@@ -99,10 +226,27 @@ onMounted(() => {
         Back to Chat
       </el-button>
       <h1>System Status</h1>
-      <el-button type="primary" :loading="loading" @click="loadStatus">
-        <el-icon><Refresh /></el-icon>
-        Refresh
-      </el-button>
+      <div class="header-actions">
+        <el-button @click="handleExport">
+          <el-icon><Download /></el-icon>
+          Export Config
+        </el-button>
+        <el-button @click="triggerImport">
+          <el-icon><Upload /></el-icon>
+          Import Config
+        </el-button>
+        <input
+          ref="fileInputRef"
+          type="file"
+          accept=".toml"
+          style="display: none"
+          @change="handleImport"
+        />
+        <el-button type="primary" :loading="loading" @click="loadStatus">
+          <el-icon><Refresh /></el-icon>
+          Refresh
+        </el-button>
+      </div>
     </header>
 
     <div v-if="loading" class="loading-container">
@@ -191,9 +335,15 @@ onMounted(() => {
                 >
                   <div class="config-field-header">
                     <label>{{ field.label }}</label>
-                    <el-text v-if="savingConfig === `${plugin.name}:${field.key}`" type="primary" size="small">
-                      Saving...
-                    </el-text>
+                    <span class="config-status-wrapper">
+                      <el-text v-show="savingConfig === `${plugin.name}:${field.key}`" type="primary" size="small" class="config-status">
+                        Saving...
+                      </el-text>
+                      <el-text v-show="savedConfig === `${plugin.name}:${field.key}` && savingConfig !== `${plugin.name}:${field.key}`" type="success" size="small" class="config-status">
+                        <el-icon><Check /></el-icon>
+                        Saved
+                      </el-text>
+                    </span>
                   </div>
                   <el-text type="info" size="small" class="config-description">
                     {{ field.description }}
@@ -211,22 +361,56 @@ onMounted(() => {
                     </el-text>
                   </div>
 
-                  <!-- String input -->
-                  <el-input
+                  <!-- String input - uses native input to avoid focus loss on re-render -->
+                  <input
                     v-else-if="field.type === 'string'"
-                    :model-value="plugin.config.values[field.key] || field.default_value"
-                    :disabled="savingConfig === `${plugin.name}:${field.key}`"
-                    @change="(val: string) => updateConfig(plugin.name, field.key, val)"
+                    type="text"
+                    class="config-input"
+                    :ref="(el: any) => el && !el._initialized && (el.value = plugin.config?.values[field.key] ?? field.default_value, el._initialized = true)"
+                    @input="(e: Event) => updateConfigDebounced(plugin.name, field.key, (e.target as HTMLInputElement).value)"
                   />
 
                   <!-- Number input -->
                   <el-input-number
                     v-else-if="field.type === 'number'"
-                    :model-value="Number(plugin.config.values[field.key] || field.default_value)"
+                    :model-value="Number(plugin.config.values[field.key] || field.default_value || 0)"
                     :disabled="savingConfig === `${plugin.name}:${field.key}`"
-                    @change="(val: number | undefined) => updateConfig(plugin.name, field.key, String(val ?? 0))"
+                    @change="(val: number | undefined) => updateConfigImmediate(plugin.name, field.key, String(val ?? 0))"
                     controls-position="right"
                   />
+
+                  <!-- String Array input -->
+                  <div v-else-if="field.type === 'string_array'" class="array-input">
+                    <div class="array-tags">
+                      <el-tag
+                        v-for="(item, index) in parseArray(plugin.config.values[field.key])"
+                        :key="index"
+                        closable
+                        :disable-transitions="false"
+                        @close="removeArrayItem(plugin.name, field.key, index)"
+                      >
+                        {{ item }}
+                      </el-tag>
+                    </div>
+                    <div class="array-add">
+                      <el-input
+                        v-model="newArrayItem[`${plugin.name}:${field.key}`]"
+                        placeholder="Add item..."
+                        size="small"
+                        :disabled="savingConfig === `${plugin.name}:${field.key}`"
+                        @keyup.enter="addArrayItem(plugin.name, field.key)"
+                      />
+                      <el-button
+                        size="small"
+                        type="primary"
+                        :disabled="savingConfig === `${plugin.name}:${field.key}`"
+                        @click="addArrayItem(plugin.name, field.key)"
+                      >
+                        <el-icon><Plus /></el-icon>
+                        Add
+                      </el-button>
+                    </div>
+                  </div>
                 </div>
               </div>
             </div>
@@ -322,6 +506,12 @@ onMounted(() => {
   font-weight: 600;
   color: var(--el-text-color-primary);
   margin: 0;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
 }
 
 .loading-container {
@@ -459,6 +649,29 @@ onMounted(() => {
   gap: 12px;
 }
 
+.array-input {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.array-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 24px;
+}
+
+.array-add {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.array-add .el-input {
+  flex: 1;
+}
+
 .parameters {
   margin-top: 16px;
 }
@@ -477,5 +690,42 @@ onMounted(() => {
   padding: 2px 6px;
   border-radius: 4px;
   font-size: 12px;
+}
+
+.config-status-wrapper {
+  min-width: 60px;
+  text-align: right;
+}
+
+.config-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.config-input {
+  width: 100%;
+  padding: 8px 12px;
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--el-text-color-regular);
+  background-color: var(--el-fill-color-blank);
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.config-input:focus {
+  border-color: var(--el-color-primary);
+}
+
+.config-input:hover {
+  border-color: var(--el-border-color-hover);
+}
+
+.config-input:disabled {
+  background-color: var(--el-fill-color-light);
+  cursor: not-allowed;
 }
 </style>
