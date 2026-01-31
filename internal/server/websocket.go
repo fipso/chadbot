@@ -90,6 +90,13 @@ func NewWebSocketServer(addr string, eventBus *event.Bus, llmRouter *llm.Router,
 		ws.broadcastEvent(evt)
 	})
 
+	// Set up tool call callback to broadcast tool call events
+	if llmRouter != nil {
+		llmRouter.SetToolCallCallback(func(evt llm.ToolCallEvent) {
+			ws.Broadcast("chat.tool_call", evt)
+		})
+	}
+
 	return ws
 }
 
@@ -566,7 +573,7 @@ func (c *WSClient) handleChatMessage(msg IncomingChatMessage) {
 
 func (c *WSClient) processWithLLM(msg IncomingChatMessage) {
 	log.Printf("[WebSocket] processWithLLM called with soul=%q provider=%q", msg.Soul, msg.Provider)
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
 
 	// Load chat history from database
@@ -623,7 +630,7 @@ func (c *WSClient) processWithLLM(msg IncomingChatMessage) {
 		return
 	}
 
-	// Save assistant message to database with soul and provider info
+	// Save assistant message to database with soul, provider, and tool calls
 	assistantMsg := &storage.Message{
 		ID:        uuid.New().String(),
 		ChatID:    msg.ChatID,
@@ -633,12 +640,21 @@ func (c *WSClient) processWithLLM(msg IncomingChatMessage) {
 		Provider:  provider,
 		CreatedAt: time.Now(),
 	}
+
+	// Serialize tool calls to JSON if present
+	if len(resp.ToolCallRecords) > 0 {
+		toolCallsJSON, err := json.Marshal(resp.ToolCallRecords)
+		if err == nil {
+			assistantMsg.ToolCalls = string(toolCallsJSON)
+		}
+	}
+
 	if err := storage.AddMessage(assistantMsg); err != nil {
 		log.Printf("[WebSocket] Failed to save assistant message: %v", err)
 	}
 
-	// Send response back with soul and provider info
-	c.send("chat.message", map[string]interface{}{
+	// Send response back with soul, provider, and tool calls info
+	responsePayload := map[string]interface{}{
 		"id":         assistantMsg.ID,
 		"chat_id":    msg.ChatID,
 		"content":    resp.Content,
@@ -646,7 +662,11 @@ func (c *WSClient) processWithLLM(msg IncomingChatMessage) {
 		"soul":       soul,
 		"provider":   provider,
 		"created_at": assistantMsg.CreatedAt,
-	})
+	}
+	if len(resp.ToolCallRecords) > 0 {
+		responsePayload["tool_calls"] = resp.ToolCallRecords
+	}
+	c.send("chat.message", responsePayload)
 
 	// Process deferred attachments (images, etc.) after assistant response
 	for _, da := range resp.DeferredAttachments {

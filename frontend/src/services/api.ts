@@ -25,6 +25,7 @@ export interface Message {
   created_at: string
   display_only?: boolean
   attachments?: string  // JSON string of Attachment[] from backend
+  tool_calls?: string   // JSON string of ToolCallRecord[] from backend
   soul?: string
   provider?: string
 }

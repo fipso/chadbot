@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { wsService, type WSMessage, type ChatMessagePayload, type Attachment } from '../services/websocket'
+import { wsService, type WSMessage, type ChatMessagePayload, type Attachment, type ToolCallRecord, type ToolCallEvent } from '../services/websocket'
 import * as api from '../services/api'
 import type { Provider, Soul } from '../services/api'
 
@@ -12,9 +12,13 @@ export interface ChatMessage {
   created_at: string
   display_only?: boolean
   attachments?: Attachment[]
+  tool_calls?: ToolCallRecord[]
   soul?: string
   provider?: string
 }
+
+// Re-export for components
+export type { ToolCallRecord, ToolCallEvent }
 
 export interface Chat {
   id: string
@@ -33,6 +37,9 @@ export const useChatStore = defineStore('chat', () => {
   const selectedProvider = ref<string>('')
   const souls = ref<Soul[]>([])
   const selectedSoul = ref<string>('default')
+
+  // Pending tool calls for the current LLM request
+  const pendingToolCalls = ref<Map<string, ToolCallEvent[]>>(new Map())
 
   const activeChat = computed(() => {
     if (!activeChatId.value) return null
@@ -55,6 +62,16 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // Parse tool_calls JSON string from API into array
+  function parseToolCalls(toolCallsJson?: string): ToolCallRecord[] | undefined {
+    if (!toolCallsJson) return undefined
+    try {
+      return JSON.parse(toolCallsJson)
+    } catch {
+      return undefined
+    }
+  }
+
   async function loadChats() {
     try {
       const serverChats = await api.fetchChats()
@@ -68,6 +85,7 @@ export const useChatStore = defineStore('chat', () => {
           created_at: m.created_at,
           display_only: m.display_only,
           attachments: parseAttachments(m.attachments),
+          tool_calls: parseToolCalls(m.tool_calls),
           soul: m.soul,
           provider: m.provider
         }))
@@ -223,11 +241,33 @@ export const useChatStore = defineStore('chat', () => {
             created_at: payload.created_at,
             display_only: payload.display_only,
             attachments: payload.attachments,
+            tool_calls: payload.tool_calls,
             soul: payload.soul,
             provider: payload.provider
           })
           if (payload.role === 'assistant') {
             isLoading.value = false
+            // Clear pending tool calls for this chat
+            pendingToolCalls.value.delete(payload.chat_id)
+          }
+        }
+      })
+
+      // Handle tool call events (real-time updates while LLM is working)
+      wsService.on('chat.tool_call', (msg: WSMessage) => {
+        const event = msg.payload as ToolCallEvent
+        if (!pendingToolCalls.value.has(event.chat_id)) {
+          pendingToolCalls.value.set(event.chat_id, [])
+        }
+        const calls = pendingToolCalls.value.get(event.chat_id)!
+
+        if (event.type === 'start') {
+          calls.push(event)
+        } else if (event.type === 'complete' || event.type === 'error') {
+          // Update existing call with result
+          const idx = calls.findIndex(c => c.tool_id === event.tool_id)
+          if (idx >= 0) {
+            calls[idx] = { ...calls[idx], ...event }
           }
         }
       })
@@ -266,6 +306,7 @@ export const useChatStore = defineStore('chat', () => {
     selectedProvider,
     souls,
     selectedSoul,
+    pendingToolCalls,
     loadChats,
     loadProviders,
     loadSouls,

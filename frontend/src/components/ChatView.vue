@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { ref, nextTick, watch, computed } from 'vue'
+import { ref, nextTick, watch, computed, onMounted } from 'vue'
 import { useChatStore } from '../stores/chat'
 import ChatMessage from './ChatMessage.vue'
 import VoiceButton from './VoiceButton.vue'
+import ToolCallFlow from './ToolCallFlow.vue'
 import { Promotion } from '@element-plus/icons-vue'
 
 const chatStore = useChatStore()
@@ -12,7 +13,47 @@ const inputRef = ref<InstanceType<typeof import('element-plus')['ElInput']> | nu
 
 const messages = computed(() => chatStore.activeChat?.messages || [])
 
+// Ensure providers and souls are loaded when component mounts
+// This handles the case where navigation causes the component to remount
+onMounted(async () => {
+  // Re-fetch if arrays are empty (e.g., after page navigation)
+  if (chatStore.providers.length === 0) {
+    await chatStore.loadProviders()
+  }
+  if (chatStore.souls.length === 0) {
+    await chatStore.loadSouls()
+  }
+  // Ensure selected values are valid
+  if (chatStore.providers.length > 0 && !chatStore.selectedProvider) {
+    const defaultProvider = chatStore.providers.find(p => p.is_default)
+    if (defaultProvider) {
+      chatStore.setProvider(defaultProvider.name)
+    } else {
+      chatStore.setProvider(chatStore.providers[0].name)
+    }
+  }
+  if (chatStore.souls.length > 0 && !chatStore.selectedSoul) {
+    const defaultSoul = chatStore.souls.find(s => s.name === 'default')
+    if (defaultSoul) {
+      chatStore.setSoul('default')
+    } else {
+      chatStore.setSoul(chatStore.souls[0].name)
+    }
+  }
+})
+
+const activePendingCalls = computed(() => {
+  if (!chatStore.activeChatId) return []
+  return chatStore.pendingToolCalls.get(chatStore.activeChatId) || []
+})
+
 watch(messages, async () => {
+  await nextTick()
+  scrollToBottom()
+}, { deep: true })
+
+// Also scroll when pending tool calls update (loading indicator expands)
+watch(activePendingCalls, async () => {
   await nextTick()
   scrollToBottom()
 }, { deep: true })
@@ -58,6 +99,12 @@ function handleVoiceResult(text: string) {
         :message="message"
       />
       <div v-if="chatStore.isLoading" class="loading-indicator">
+        <!-- Show pending tool calls if any -->
+        <ToolCallFlow
+          v-if="activePendingCalls.length > 0"
+          :pending-calls="activePendingCalls"
+        />
+        <!-- Typing dots when no tool calls or after tool calls -->
         <div class="typing-dots">
           <span></span>
           <span></span>
@@ -129,7 +176,9 @@ function handleVoiceResult(text: string) {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  min-width: 0;
   background: var(--el-bg-color-page);
+  overflow: hidden;
 }
 
 .chat-header {
@@ -148,6 +197,7 @@ function handleVoiceResult(text: string) {
 .messages {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 24px;
   display: flex;
   flex-direction: column;
@@ -157,6 +207,8 @@ function handleVoiceResult(text: string) {
 .loading-indicator {
   padding: 16px;
   align-self: flex-start;
+  max-width: 85%;
+  min-width: 0;
 }
 
 .typing-dots {

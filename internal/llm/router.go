@@ -45,10 +45,36 @@ type ToolCall struct {
 
 // Response represents an LLM response
 type Response struct {
-	Content            string              `json:"content"`
-	ToolCalls          []ToolCall          `json:"tool_calls,omitempty"`
-	Done               bool                `json:"done"`
+	Content             string              `json:"content"`
+	ToolCalls           []ToolCall          `json:"tool_calls,omitempty"`
+	Done                bool                `json:"done"`
 	DeferredAttachments []DeferredAttachment `json:"-"` // Attachments to add after response
+	ToolCallRecords     []ToolCallRecord    `json:"-"` // Records of tool calls made during this response
+}
+
+// ToolCallRecord represents a completed tool call with result
+type ToolCallRecord struct {
+	ID        string            `json:"id"`
+	Name      string            `json:"name"`
+	Arguments map[string]string `json:"arguments"`
+	Result    string            `json:"result"`
+	Error     string            `json:"error,omitempty"`
+	Duration  int64             `json:"duration_ms"`
+}
+
+// ToolCallCallback is called when a tool call starts or completes
+type ToolCallCallback func(event ToolCallEvent)
+
+// ToolCallEvent represents a tool call lifecycle event
+type ToolCallEvent struct {
+	Type      string            `json:"type"` // "start", "complete", "error"
+	ChatID    string            `json:"chat_id"`
+	ToolName  string            `json:"tool_name"`
+	ToolID    string            `json:"tool_id"`
+	Arguments map[string]string `json:"arguments,omitempty"`
+	Result    string            `json:"result,omitempty"`
+	Error     string            `json:"error,omitempty"`
+	Duration  int64             `json:"duration_ms,omitempty"`
 }
 
 // DeferredAttachment represents an attachment to add after the LLM response
@@ -62,11 +88,17 @@ type DeferredAttachment struct {
 
 // Router routes requests to LLM providers and handles skill invocation
 type Router struct {
-	providers       map[string]Provider
-	manager         *plugin.Manager
-	registry        *plugin.Registry
-	souls           *souls.Manager
-	defaultProvider string
+	providers        map[string]Provider
+	manager          *plugin.Manager
+	registry         *plugin.Registry
+	souls            *souls.Manager
+	defaultProvider  string
+	toolCallCallback ToolCallCallback
+}
+
+// SetToolCallCallback sets a callback for tool call events
+func (r *Router) SetToolCallCallback(cb ToolCallCallback) {
+	r.toolCallCallback = cb
 }
 
 // NewRouter creates a new LLM router
@@ -174,6 +206,9 @@ func (r *Router) Chat(ctx context.Context, messages []Message, providerName stri
 	// Track deferred attachments from skill results
 	var deferredAttachments []DeferredAttachment
 
+	// Track tool call records for the response
+	var toolCallRecords []ToolCallRecord
+
 	// Track which plugins have had their documentation injected
 	loadedPluginDocs := make(map[string]bool)
 
@@ -184,9 +219,10 @@ func (r *Router) Chat(ctx context.Context, messages []Message, providerName stri
 			return nil, err
 		}
 
-		// If no tool calls, return the response with deferred attachments
+		// If no tool calls, return the response with deferred attachments and tool records
 		if len(resp.ToolCalls) == 0 {
 			resp.DeferredAttachments = deferredAttachments
+			resp.ToolCallRecords = toolCallRecords
 			return resp, nil
 		}
 
@@ -240,9 +276,53 @@ func (r *Router) Chat(ctx context.Context, messages []Message, providerName stri
 		// Execute tool calls
 		for _, tc := range resp.ToolCalls {
 			log.Printf("[LLM Router] Tool call: %s with args: %+v", tc.Name, tc.Arguments)
+
+			// Emit tool call start event
+			chatID := ""
+			if chatCtx != nil {
+				chatID = chatCtx.ChatID
+			}
+			if r.toolCallCallback != nil {
+				r.toolCallCallback(ToolCallEvent{
+					Type:      "start",
+					ChatID:    chatID,
+					ToolName:  tc.Name,
+					ToolID:    tc.ID,
+					Arguments: tc.Arguments,
+				})
+			}
+
+			startTime := time.Now()
 			result, err := r.invokeSkill(ctx, tc.Name, tc.Arguments, chatCtx)
+			duration := time.Since(startTime).Milliseconds()
+
+			// Record tool call
+			record := ToolCallRecord{
+				ID:        tc.ID,
+				Name:      tc.Name,
+				Arguments: tc.Arguments,
+				Duration:  duration,
+			}
+
 			if err != nil {
+				record.Error = err.Error()
 				result = fmt.Sprintf("Error: %s", err.Error())
+			} else {
+				record.Result = result
+			}
+			toolCallRecords = append(toolCallRecords, record)
+
+			// Emit tool call complete event
+			if r.toolCallCallback != nil {
+				r.toolCallCallback(ToolCallEvent{
+					Type:     "complete",
+					ChatID:   chatID,
+					ToolName: tc.Name,
+					ToolID:   tc.ID,
+					Result:   result,
+					Error:    record.Error,
+					Duration: duration,
+				})
 			}
 
 			// Check for deferred attachments in the result
@@ -465,14 +545,14 @@ func (r *Router) invokeSkill(ctx context.Context, skillName string, args map[str
 		return "", fmt.Errorf("failed to invoke skill: %w", err)
 	}
 
-	// Wait for response with timeout
+	// Wait for response with timeout (2 minutes to allow for slow operations like HTTP requests)
 	select {
 	case resp := <-respChan:
 		if !resp.Success {
 			return "", fmt.Errorf("skill error: %s", resp.Error)
 		}
 		return resp.Result, nil
-	case <-time.After(30 * time.Second):
+	case <-time.After(120 * time.Second):
 		r.manager.CancelPendingRequest(requestID)
 		return "", fmt.Errorf("skill invocation timed out")
 	case <-ctx.Done():

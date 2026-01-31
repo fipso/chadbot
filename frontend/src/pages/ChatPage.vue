@@ -38,6 +38,7 @@ const chatStore = useChatStore()
   display: flex;
   height: 100vh;
   width: 100%;
+  overflow: hidden;
 }
 
 .main {
@@ -45,6 +46,8 @@ const chatStore = useChatStore()
   display: flex;
   flex-direction: column;
   background: var(--el-bg-color-page);
+  min-width: 0;
+  overflow: hidden;
 }
 
 .empty-state {

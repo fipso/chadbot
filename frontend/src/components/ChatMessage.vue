@@ -3,6 +3,7 @@ import { computed } from 'vue'
 import { marked } from 'marked'
 import type { ChatMessage } from '../stores/chat'
 import { User, Monitor, Picture } from '@element-plus/icons-vue'
+import ToolCallFlow from './ToolCallFlow.vue'
 
 const props = defineProps<{
   message: ChatMessage
@@ -78,6 +79,12 @@ const roleIcon = computed(() => {
         <span v-if="modelInfo" class="model-info">{{ modelInfo }}</span>
         <span class="timestamp">{{ formattedTime }}</span>
       </div>
+      <!-- Tool call flow (collapsible) -->
+      <ToolCallFlow
+        v-if="message.role === 'assistant' && message.tool_calls?.length"
+        :tool-calls="message.tool_calls"
+      />
+
       <!-- Message content with attachments inside -->
       <div
         v-if="message.role === 'assistant' || message.role === 'plugin'"
@@ -151,6 +158,9 @@ const roleIcon = computed(() => {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .message-header {
@@ -188,6 +198,9 @@ const roleIcon = computed(() => {
   border-radius: 16px;
   line-height: 1.6;
   font-size: 14px;
+  overflow-x: auto;
+  overflow-wrap: break-word;
+  word-break: break-word;
 }
 
 .message.user .message-content {
@@ -242,5 +255,19 @@ const roleIcon = computed(() => {
 /* For messages with only attachments (no text) */
 .message-content:has(.attachments:first-child) {
   padding: 8px;
+}
+
+/* Markdown code blocks */
+.markdown-content :deep(pre) {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.markdown-content :deep(code) {
+  word-break: break-all;
+}
+
+.markdown-content :deep(pre code) {
+  word-break: normal;
 }
 </style>

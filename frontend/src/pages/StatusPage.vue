@@ -133,7 +133,7 @@ function onToggle(pluginName: string, key: string, currentValue: string) {
 
 // Cleanup timers on unmount
 onUnmounted(() => {
-  Object.values(debounceTimers.value).forEach(timer => clearTimeout(timer))
+  Object.values(debounceTimers).forEach(timer => clearTimeout(timer))
 })
 
 function parseArray(value: string | undefined): string[] {

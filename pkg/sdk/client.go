@@ -74,6 +74,10 @@ type Client struct {
 	runErr    error
 	runErrMu  sync.Mutex
 	runDone   chan struct{}
+
+	// Queued messages received during config wait
+	queuedMessages []*pb.BackendMessage
+	queuedMu       sync.Mutex
 }
 
 // NewClient creates a new plugin client
@@ -171,8 +175,8 @@ func (c *Client) Connect(ctx context.Context) error {
 		return err
 	}
 
-	// Start message processing loop in background
-	go c.processMessages()
+	// Note: processMessages() is started in Run(), not here
+	// This allows RegisterConfig() to read from the stream without races
 
 	return nil
 }
@@ -275,6 +279,9 @@ func (c *Client) Emit(event *pb.Event) error {
 
 // Run blocks until the client is stopped or encounters an error
 func (c *Client) Run(ctx context.Context) error {
+	// Start message processing loop now (after Connect and RegisterConfig are done)
+	go c.processMessages()
+
 	select {
 	case <-ctx.Done():
 		c.cancel()
@@ -292,6 +299,17 @@ func (c *Client) Run(ctx context.Context) error {
 func (c *Client) processMessages() {
 	defer close(c.runDone)
 
+	// First, process any messages that were queued during config wait
+	c.queuedMu.Lock()
+	queued := c.queuedMessages
+	c.queuedMessages = nil
+	c.queuedMu.Unlock()
+
+	for _, msg := range queued {
+		log.Printf("[SDK] Processing queued message: %T", msg.Payload)
+		c.handleMessage(msg)
+	}
+
 	for {
 		select {
 		case <-c.ctx.Done():
@@ -305,89 +323,94 @@ func (c *Client) processMessages() {
 				return
 			}
 
-			switch payload := msg.Payload.(type) {
-			case *pb.BackendMessage_SkillInvoke:
-				go c.handleSkillInvoke(c.ctx, payload.SkillInvoke)
-			case *pb.BackendMessage_EventDispatch:
-				go c.handleEventDispatch(payload.EventDispatch)
-			case *pb.BackendMessage_Error:
-				log.Printf("[SDK] Error from backend: %s", payload.Error.Message)
+			c.handleMessage(msg)
+		}
+	}
+}
 
-			// Chat service responses
-			case *pb.BackendMessage_ChatGetOrCreateResponse:
-				c.mu.Lock()
-				if ch, ok := c.pendingChatReqs[payload.ChatGetOrCreateResponse.RequestId]; ok {
-					ch <- payload.ChatGetOrCreateResponse
-					delete(c.pendingChatReqs, payload.ChatGetOrCreateResponse.RequestId)
-				}
-				c.mu.Unlock()
+// handleMessage processes a single backend message
+func (c *Client) handleMessage(msg *pb.BackendMessage) {
+	switch payload := msg.Payload.(type) {
+	case *pb.BackendMessage_SkillInvoke:
+		go c.handleSkillInvoke(c.ctx, payload.SkillInvoke)
+	case *pb.BackendMessage_EventDispatch:
+		go c.handleEventDispatch(payload.EventDispatch)
+	case *pb.BackendMessage_Error:
+		log.Printf("[SDK] Error from backend: %s", payload.Error.Message)
 
-			case *pb.BackendMessage_ChatAddMessageResponse:
-				c.mu.Lock()
-				if ch, ok := c.pendingAddMsgReqs[payload.ChatAddMessageResponse.RequestId]; ok {
-					ch <- payload.ChatAddMessageResponse
-					delete(c.pendingAddMsgReqs, payload.ChatAddMessageResponse.RequestId)
-				}
-				c.mu.Unlock()
+	// Chat service responses
+	case *pb.BackendMessage_ChatGetOrCreateResponse:
+		c.mu.Lock()
+		if ch, ok := c.pendingChatReqs[payload.ChatGetOrCreateResponse.RequestId]; ok {
+			ch <- payload.ChatGetOrCreateResponse
+			delete(c.pendingChatReqs, payload.ChatGetOrCreateResponse.RequestId)
+		}
+		c.mu.Unlock()
 
-			case *pb.BackendMessage_ChatLlmResponse:
-				resp := payload.ChatLlmResponse
-				// Check for pending sync requests first
-				c.mu.Lock()
-				if ch, ok := c.pendingLLMReqs[resp.RequestId]; ok {
-					ch <- resp
-					delete(c.pendingLLMReqs, resp.RequestId)
-					c.mu.Unlock()
-					continue
-				}
-				handler := c.chatLLMHandler
-				c.mu.Unlock()
-				if handler != nil {
-					go handler(resp)
-				}
+	case *pb.BackendMessage_ChatAddMessageResponse:
+		c.mu.Lock()
+		if ch, ok := c.pendingAddMsgReqs[payload.ChatAddMessageResponse.RequestId]; ok {
+			ch <- payload.ChatAddMessageResponse
+			delete(c.pendingAddMsgReqs, payload.ChatAddMessageResponse.RequestId)
+		}
+		c.mu.Unlock()
 
-			// Storage responses
-			case *pb.BackendMessage_StorageResponse:
-				c.mu.Lock()
-				if ch, ok := c.pendingStorageReqs[payload.StorageResponse.RequestId]; ok {
-					ch <- payload.StorageResponse
-					delete(c.pendingStorageReqs, payload.StorageResponse.RequestId)
-				}
-				c.mu.Unlock()
+	case *pb.BackendMessage_ChatLlmResponse:
+		resp := payload.ChatLlmResponse
+		// Check for pending sync requests first
+		c.mu.Lock()
+		if ch, ok := c.pendingLLMReqs[resp.RequestId]; ok {
+			ch <- resp
+			delete(c.pendingLLMReqs, resp.RequestId)
+			c.mu.Unlock()
+			return
+		}
+		handler := c.chatLLMHandler
+		c.mu.Unlock()
+		if handler != nil {
+			go handler(resp)
+		}
 
-			// Config responses
-			case *pb.BackendMessage_ConfigGetResponse:
-				resp := payload.ConfigGetResponse
-				if resp.Success && resp.Config != nil {
-					c.mu.Lock()
-					for k, v := range resp.Config.Values {
-						c.configValues[k] = v
-					}
-					c.mu.Unlock()
-				}
-				// Also handle pending requests
-				c.mu.Lock()
-				if ch, ok := c.pendingConfigReqs[resp.RequestId]; ok {
-					ch <- resp
-					delete(c.pendingConfigReqs, resp.RequestId)
-				}
-				c.mu.Unlock()
+	// Storage responses
+	case *pb.BackendMessage_StorageResponse:
+		c.mu.Lock()
+		if ch, ok := c.pendingStorageReqs[payload.StorageResponse.RequestId]; ok {
+			ch <- payload.StorageResponse
+			delete(c.pendingStorageReqs, payload.StorageResponse.RequestId)
+		}
+		c.mu.Unlock()
 
-			case *pb.BackendMessage_ConfigChanged:
-				changed := payload.ConfigChanged
-				c.mu.Lock()
-				c.configValues[changed.Key] = changed.Value
-				if changed.AllValues != nil {
-					for k, v := range changed.AllValues.Values {
-						c.configValues[k] = v
-					}
-				}
-				handler := c.configChangedHandler
-				c.mu.Unlock()
-				if handler != nil {
-					go handler(changed.Key, changed.Value, c.configValues)
-				}
+	// Config responses
+	case *pb.BackendMessage_ConfigGetResponse:
+		resp := payload.ConfigGetResponse
+		if resp.Success && resp.Config != nil {
+			c.mu.Lock()
+			for k, v := range resp.Config.Values {
+				c.configValues[k] = v
 			}
+			c.mu.Unlock()
+		}
+		// Also handle pending requests
+		c.mu.Lock()
+		if ch, ok := c.pendingConfigReqs[resp.RequestId]; ok {
+			ch <- resp
+			delete(c.pendingConfigReqs, resp.RequestId)
+		}
+		c.mu.Unlock()
+
+	case *pb.BackendMessage_ConfigChanged:
+		changed := payload.ConfigChanged
+		c.mu.Lock()
+		c.configValues[changed.Key] = changed.Value
+		if changed.AllValues != nil {
+			for k, v := range changed.AllValues.Values {
+				c.configValues[k] = v
+			}
+		}
+		handler := c.configChangedHandler
+		c.mu.Unlock()
+		if handler != nil {
+			go handler(changed.Key, changed.Value, c.configValues)
 		}
 	}
 }
@@ -818,7 +841,7 @@ type ConfigField struct {
 	DefaultValue string
 }
 
-// RegisterConfig registers the plugin's config schema
+// RegisterConfig registers the plugin's config schema and waits for initial config values
 func (c *Client) RegisterConfig(fields []ConfigField) error {
 	schema := &pb.ConfigSchema{
 		Fields: make([]*pb.ConfigField, len(fields)),
@@ -834,9 +857,38 @@ func (c *Client) RegisterConfig(fields []ConfigField) error {
 	}
 	c.configSchema = schema
 
-	return c.stream.Send(&pb.PluginMessage{
+	if err := c.stream.Send(&pb.PluginMessage{
 		Payload: &pb.PluginMessage_ConfigSchema{ConfigSchema: schema},
-	})
+	}); err != nil {
+		return err
+	}
+
+	// Wait for config response from backend
+	// The backend sends ConfigGetResponse immediately after receiving ConfigSchema
+	// Since processMessages() hasn't started yet, we can read directly from the stream
+	msg, err := c.stream.Recv()
+	if err != nil {
+		return fmt.Errorf("error receiving config response: %w", err)
+	}
+
+	if resp, ok := msg.Payload.(*pb.BackendMessage_ConfigGetResponse); ok {
+		if resp.ConfigGetResponse.Success && resp.ConfigGetResponse.Config != nil {
+			c.mu.Lock()
+			for k, v := range resp.ConfigGetResponse.Config.Values {
+				c.configValues[k] = v
+			}
+			c.mu.Unlock()
+			log.Printf("[SDK] Received initial config: %d values", len(resp.ConfigGetResponse.Config.Values))
+		}
+	} else {
+		// Unexpected message - queue it for later processing
+		log.Printf("[SDK] Unexpected message during config wait: %T (queued)", msg.Payload)
+		c.queuedMu.Lock()
+		c.queuedMessages = append(c.queuedMessages, msg)
+		c.queuedMu.Unlock()
+	}
+
+	return nil
 }
 
 // OnConfigChanged registers a handler for config changes

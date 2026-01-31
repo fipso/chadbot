@@ -11,6 +11,26 @@ export interface Attachment {
   name?: string
 }
 
+export interface ToolCallRecord {
+  id: string
+  name: string
+  arguments: Record<string, string>
+  result: string
+  error?: string
+  duration_ms: number
+}
+
+export interface ToolCallEvent {
+  type: 'start' | 'complete' | 'error'
+  chat_id: string
+  tool_name: string
+  tool_id: string
+  arguments?: Record<string, string>
+  result?: string
+  error?: string
+  duration_ms?: number
+}
+
 export interface ChatMessagePayload {
   id: string
   chat_id: string
@@ -19,6 +39,7 @@ export interface ChatMessagePayload {
   created_at: string
   display_only?: boolean
   attachments?: Attachment[]
+  tool_calls?: ToolCallRecord[]
   soul?: string
   provider?: string
 }

@@ -80,15 +80,16 @@ func (p *Process) Wait() {
 
 // ProcessManager manages chadbot and plugin processes
 type ProcessManager struct {
-	chadbot     *Process
-	plugins     map[string]*Process
-	mu          sync.Mutex
-	outputMu    sync.Mutex
-	socketPath  string
-	httpAddr    string
-	binDir      string
-	pluginsDir  string
-	colorIndex  int
+	chadbot       *Process
+	plugins       map[string]*Process
+	mu            sync.Mutex
+	outputMu      sync.Mutex
+	socketPath    string
+	httpAddr      string
+	binDir        string
+	pluginsDir    string
+	colorIndex    int
+	pluginFilter  map[string]bool // If non-nil, only load these plugins
 }
 
 func NewProcessManager(socketPath, httpAddr, binDir, pluginsDir string) *ProcessManager {
@@ -99,6 +100,23 @@ func NewProcessManager(socketPath, httpAddr, binDir, pluginsDir string) *Process
 		binDir:     binDir,
 		pluginsDir: pluginsDir,
 	}
+}
+
+func (pm *ProcessManager) SetPluginFilter(filter map[string]bool) {
+	pm.pluginFilter = filter
+}
+
+func (pm *ProcessManager) FilterPlugins(plugins []string) []string {
+	if pm.pluginFilter == nil {
+		return plugins
+	}
+	var filtered []string
+	for _, p := range plugins {
+		if pm.pluginFilter[p] {
+			filtered = append(filtered, p)
+		}
+	}
+	return filtered
 }
 
 func (pm *ProcessManager) nextColor() string {
@@ -497,6 +515,9 @@ func (fw *FileWatcher) restartAll() {
 		return
 	}
 
+	// Apply plugin filter
+	plugins = fw.pm.FilterPlugins(plugins)
+
 	for _, plugin := range plugins {
 		fw.pm.logPM("Building plugin: %s", plugin)
 		if err := buildPlugin(plugin, fw.pm.binDir, fw.pluginsDir); err != nil {
@@ -520,6 +541,7 @@ func main() {
 	socketPath := flag.String("socket", "/tmp/chadbot.sock", "Socket path for chadbot")
 	httpAddr := flag.String("http", ":8080", "HTTP address for chadbot")
 	pluginsDir := flag.String("plugins", "./plugins", "Plugins directory")
+	onlyPlugins := flag.String("only", "", "Comma-separated list of plugins to load (e.g., 'whatsapp,vpd')")
 	flag.Parse()
 
 	binDir := "./bin"
@@ -533,6 +555,16 @@ func main() {
 	plugins, err := discoverPlugins(*pluginsDir)
 	if err != nil {
 		log.Fatalf("Failed to discover plugins: %v", err)
+	}
+
+	// Filter plugins if -only flag is specified
+	if *onlyPlugins != "" {
+		onlySet := make(map[string]bool)
+		for _, p := range strings.Split(*onlyPlugins, ",") {
+			onlySet[strings.TrimSpace(p)] = true
+		}
+		pm.SetPluginFilter(onlySet)
+		plugins = pm.FilterPlugins(plugins)
 	}
 
 	pm.logPM("Discovered plugins: %s", strings.Join(plugins, ", "))

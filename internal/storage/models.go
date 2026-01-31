@@ -27,9 +27,20 @@ type Message struct {
 	Content     string    `json:"content"`
 	DisplayOnly bool      `json:"display_only"`       // If true, not sent to LLM
 	Attachments string    `json:"attachments"`        // JSON array of attachments
+	ToolCalls   string    `json:"tool_calls"`         // JSON array of tool calls made during this response
 	Soul        string    `json:"soul,omitempty"`     // Soul used for this response
 	Provider    string    `json:"provider,omitempty"` // LLM provider used for this response
 	CreatedAt   time.Time `json:"created_at"`
+}
+
+// ToolCallRecord represents a single tool call for storage/display
+type ToolCallRecord struct {
+	ID        string            `json:"id"`
+	Name      string            `json:"name"`
+	Arguments map[string]string `json:"arguments"`
+	Result    string            `json:"result"`
+	Error     string            `json:"error,omitempty"`
+	Duration  int64             `json:"duration_ms"`
 }
 
 // PluginConfig stores plugin configuration values
