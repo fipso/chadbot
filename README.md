@@ -402,6 +402,49 @@ X/Twitter infinite scroll automation using Chrome DevTools Protocol.
 **Events emitted:**
 - `xscroll.tweet` - When a new tweet is collected
 
+### Sandbox (`plugins/sandbox`)
+
+Isolated Docker container execution with rootless support. Runs containers in a portable, self-managed Docker environment completely isolated from any system Docker installation.
+
+**Security model:**
+- Rootless mode (default): User namespace isolation via rootlesskit, no root required
+- Root mode: Full gVisor `runsc` runtime with kernel-level syscall interception
+
+**Skills:**
+- `sandbox_status` - Check sandbox environment status and daemon state
+- `sandbox_pull` - Pull a Docker image
+- `sandbox_run` - Run a container (oneshot or detached)
+- `sandbox_exec` - Execute command in running container
+- `sandbox_images` - List available images
+- `sandbox_ps` - List containers
+- `sandbox_logs` - Get container logs
+- `sandbox_stop` - Stop a running container
+- `sandbox_rm` - Remove a container
+
+**Example usage:**
+```bash
+# Run a quick command
+sandbox_run image=alpine command='["echo", "hello world"]'
+
+# Start a detached service with port mapping
+sandbox_run image=nginx:alpine detach=true ports='["8080:80"]' name=web
+
+# Execute command in running container
+sandbox_exec container=web command='["nginx", "-t"]'
+
+# View logs and cleanup
+sandbox_logs container=web tail=50
+sandbox_stop container=web
+sandbox_rm container=web
+```
+
+**Data directory:** `~/.local/share/chadbot/sandbox/`
+
+**Requirements (rootless mode):**
+- Linux with user namespace support
+- `newuidmap`/`newgidmap` (uidmap package)
+- `/etc/subuid` and `/etc/subgid` configured
+
 ## Architecture
 
 ```
@@ -428,6 +471,11 @@ X/Twitter infinite scroll automation using Chrome DevTools Protocol.
 │WhatsApp│ │  MQTT  │ │  MCP   │ │TextHook│ │  VPD   │ │XScroll │
 │ Plugin │ │ Plugin │ │ Plugin │ │ Plugin │ │ Plugin │ │ Plugin │
 └────────┘ └────────┘ └────────┘ └────────┘ └────────┘ └────────┘
+                                    │
+                              ┌──────────┐
+                              │ Sandbox  │
+                              │ Plugin   │
+                              └──────────┘
 ```
 
 ## License
