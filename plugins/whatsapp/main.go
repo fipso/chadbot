@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -13,7 +14,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/mdp/qrterminal/v3"
+	"github.com/skip2/go-qrcode"
 	"go.mau.fi/whatsmeow"
 	"go.mau.fi/whatsmeow/proto/waE2E"
 	"go.mau.fi/whatsmeow/store/sqlstore"
@@ -141,10 +142,10 @@ func registerSkills() {
 		Parameters:  []*pb.SkillParameter{},
 	}, handleListGroups)
 
-	// Force re-login (show QR code)
-	client.RegisterSkill(&pb.Skill{
+	// Force re-login (show QR code as image in chat)
+	client.RegisterSkillWithContext(&pb.Skill{
 		Name:        "whatsapp_relogin",
-		Description: "Force WhatsApp re-login and display QR code",
+		Description: "Force WhatsApp re-login and display QR code as scannable image in chat",
 		Parameters:  []*pb.SkillParameter{},
 	}, handleRelogin)
 
@@ -202,20 +203,8 @@ func initWhatsApp(ctx context.Context) error {
 	// Connect to WhatsApp
 	if waClient.Store.ID == nil {
 		// No session, need to login with QR code
-		log.Println("[WhatsApp] No session found, displaying QR code...")
-		qrChan, _ := waClient.GetQRChannel(ctx)
-		if err := waClient.Connect(); err != nil {
-			return fmt.Errorf("failed to connect: %w", err)
-		}
-
-		for evt := range qrChan {
-			if evt.Event == "code" {
-				log.Println("[WhatsApp] Scan this QR code:")
-				qrterminal.GenerateHalfBlock(evt.Code, qrterminal.L, os.Stdout)
-			} else {
-				log.Printf("[WhatsApp] Login event: %s", evt.Event)
-			}
-		}
+		log.Println("[WhatsApp] No session found. Use the whatsapp_relogin skill to display a QR code in chat.")
+		return nil
 	} else {
 		if err := waClient.Connect(); err != nil {
 			return fmt.Errorf("failed to connect: %w", err)
@@ -562,7 +551,7 @@ func handleListGroups(ctx context.Context, args map[string]string) (string, erro
 	return string(data), nil
 }
 
-func handleRelogin(ctx context.Context, args map[string]string) (string, error) {
+func handleRelogin(ctx context.Context, inv *sdk.SkillInvocation) (string, error) {
 	// Disconnect and clear session
 	waClient.Disconnect()
 
@@ -595,15 +584,39 @@ func handleRelogin(ctx context.Context, args map[string]string) (string, error) 
 	case evt := <-qrChan:
 		if evt.Event == "code" {
 			qrCode = evt.Code
-			log.Println("[WhatsApp] New QR code generated:")
-			qrterminal.GenerateHalfBlock(qrCode, qrterminal.L, os.Stdout)
+			log.Println("[WhatsApp] New QR code generated")
 		}
 	case <-timeout:
 		return "", fmt.Errorf("QR code timeout")
 	}
 
-	// Return QR code data (can be rendered in chat)
-	return fmt.Sprintf("Scan this QR code to login:\n\n```\n%s\n```\n\n(Also displayed in plugin logs)", qrCode), nil
+	// Generate QR code as PNG image
+	png, err := qrcode.Encode(qrCode, qrcode.Medium, 256)
+	if err != nil {
+		return "", fmt.Errorf("failed to generate QR code image: %w", err)
+	}
+
+	// Return the QR code as a deferred attachment (like VPD chart does)
+	result := map[string]interface{}{
+		"text": "Scan this QR code with your WhatsApp app to login:",
+		"__deferred_attachment__": map[string]interface{}{
+			"role":         "plugin",
+			"content":      "",
+			"display_only": true,
+			"attachment": map[string]interface{}{
+				"type":      "image",
+				"mime_type": "image/png",
+				"data":      base64.StdEncoding.EncodeToString(png),
+			},
+		},
+	}
+
+	resultJSON, err := json.Marshal(result)
+	if err != nil {
+		return "QR code generated - check plugin logs", nil
+	}
+
+	return string(resultJSON), nil
 }
 
 func handleGetChatHistory(ctx context.Context, args map[string]string) (string, error) {

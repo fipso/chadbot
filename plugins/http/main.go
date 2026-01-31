@@ -74,8 +74,9 @@ func main() {
 	// Handle config changes
 	client.OnConfigChanged(handleConfigChanged)
 
-	// Load initial patterns
+	// Load initial config values
 	loadPatterns()
+	loadTimeout()
 
 	log.Println("[HTTP] Plugin started")
 
@@ -143,6 +144,15 @@ func handleConfigChanged(key, value string, allValues map[string]string) {
 		httpClient.Timeout = time.Duration(timeout) * time.Second
 		log.Printf("[HTTP] Updated timeout to %d seconds", timeout)
 	}
+}
+
+func loadTimeout() {
+	timeout := 30
+	if value := client.GetConfig("timeout_seconds"); value != "" {
+		fmt.Sscanf(value, "%d", &timeout)
+	}
+	httpClient.Timeout = time.Duration(timeout) * time.Second
+	log.Printf("[HTTP] Timeout set to %d seconds", timeout)
 }
 
 func loadPatterns() {
