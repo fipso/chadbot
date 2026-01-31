@@ -33,7 +33,8 @@ func registerSkills() {
 			{Name: "command", Type: "string", Description: "Command as JSON array (e.g., '[\"echo\", \"hello\"]'). If empty, uses image default.", Required: false},
 			{Name: "rm", Type: "string", Description: "Remove container after exit: 'true' or 'false' (default: true)", Required: false},
 			{Name: "detach", Type: "string", Description: "Run in background: 'true' or 'false' (default: false)", Required: false},
-			{Name: "ports", Type: "string", Description: "Port mappings as JSON array (e.g., '[\"8080:80\", \"443:443\"]')", Required: false},
+			{Name: "offline", Type: "string", Description: "Disable network access: 'true' or 'false' (default: false)", Required: false},
+			{Name: "ports", Type: "string", Description: "Port mappings as JSON object (e.g., '{\"8080\": \"80\", \"443\": \"443\"}')", Required: false},
 			{Name: "env", Type: "string", Description: "Environment variables as JSON array (e.g., '[\"FOO=bar\", \"DEBUG=1\"]')", Required: false},
 			{Name: "name", Type: "string", Description: "Container name", Required: false},
 		},
@@ -97,14 +98,8 @@ func handleStatus(ctx context.Context, args map[string]string) (string, error) {
 	}
 
 	// Check binaries
-	dockerdExists := false
-	if _, err := os.Stat(getBinaryPath("dockerd")); err == nil {
-		dockerdExists = true
-	}
-	runscExists := false
-	if _, err := os.Stat(getRunscPath()); err == nil {
-		runscExists = true
-	}
+	dockerdExists := fileExists(getBinaryPath("dockerd"))
+	runscExists := fileExists(getRunscPath())
 
 	result["binaries"] = map[string]bool{
 		"dockerd": dockerdExists,
@@ -120,8 +115,8 @@ func handleStatus(ctx context.Context, args map[string]string) (string, error) {
 
 	// Try to get Docker info if running
 	if daemonRunning {
-		if output, err := runDockerCommand(ctx, "info", "--format", "{{.ServerVersion}}"); err == nil {
-			result["docker_version"] = strings.TrimSpace(output)
+		if version, err := GetDockerInfo(ctx); err == nil {
+			result["docker_version"] = version
 		}
 	}
 
@@ -130,107 +125,78 @@ func handleStatus(ctx context.Context, args map[string]string) (string, error) {
 }
 
 func handlePull(ctx context.Context, args map[string]string) (string, error) {
-	image := args["image"]
-	if image == "" {
+	imageName := args["image"]
+	if imageName == "" {
 		return "", fmt.Errorf("image is required")
 	}
 
-	if err := ensureRunning(); err != nil {
-		return "", fmt.Errorf("failed to start sandbox: %w", err)
-	}
-
-	output, err := runDockerCommand(ctx, "pull", image)
-	if err != nil {
+	if err := PullImage(ctx, imageName); err != nil {
 		return "", err
 	}
 
 	result := map[string]interface{}{
 		"success": true,
-		"image":   image,
-		"output":  output,
+		"image":   imageName,
 	}
 	data, _ := json.Marshal(result)
 	return string(data), nil
 }
 
 func handleRun(ctx context.Context, args map[string]string) (string, error) {
-	image := args["image"]
-	if image == "" {
+	imageName := args["image"]
+	if imageName == "" {
 		return "", fmt.Errorf("image is required")
 	}
 
-	if err := ensureRunning(); err != nil {
-		return "", fmt.Errorf("failed to start sandbox: %w", err)
+	cfg := ContainerConfig{
+		Image:   imageName,
+		Remove:  args["rm"] != "false",
+		Detach:  args["detach"] == "true",
+		Offline: args["offline"] == "true",
+		Name:    args["name"],
 	}
 
-	// Build docker run command
-	dockerArgs := []string{"run"}
-
-	// Handle rm flag (default true)
-	rm := args["rm"]
-	if rm != "false" {
-		dockerArgs = append(dockerArgs, "--rm")
-	}
-
-	// Handle detach flag
-	detach := args["detach"] == "true"
-	if detach {
-		dockerArgs = append(dockerArgs, "-d")
-	}
-
-	// Handle name
-	if name := args["name"]; name != "" {
-		dockerArgs = append(dockerArgs, "--name", name)
-	}
-
-	// Handle ports
-	if portsJSON := args["ports"]; portsJSON != "" {
-		var ports []string
-		if err := json.Unmarshal([]byte(portsJSON), &ports); err != nil {
-			return "", fmt.Errorf("invalid ports JSON: %w", err)
-		}
-		for _, port := range ports {
-			dockerArgs = append(dockerArgs, "-p", port)
-		}
-	}
-
-	// Handle env
-	if envJSON := args["env"]; envJSON != "" {
-		var envVars []string
-		if err := json.Unmarshal([]byte(envJSON), &envVars); err != nil {
-			return "", fmt.Errorf("invalid env JSON: %w", err)
-		}
-		for _, e := range envVars {
-			dockerArgs = append(dockerArgs, "-e", e)
-		}
-	}
-
-	// Add image
-	dockerArgs = append(dockerArgs, image)
-
-	// Handle command
+	// Parse command
 	if cmdJSON := args["command"]; cmdJSON != "" {
 		var cmd []string
 		if err := json.Unmarshal([]byte(cmdJSON), &cmd); err != nil {
 			return "", fmt.Errorf("invalid command JSON: %w", err)
 		}
-		dockerArgs = append(dockerArgs, cmd...)
+		cfg.Command = cmd
 	}
 
-	output, err := runDockerCommand(ctx, dockerArgs...)
+	// Parse env
+	if envJSON := args["env"]; envJSON != "" {
+		var envVars []string
+		if err := json.Unmarshal([]byte(envJSON), &envVars); err != nil {
+			return "", fmt.Errorf("invalid env JSON: %w", err)
+		}
+		cfg.Env = envVars
+	}
+
+	// Parse ports (now a map)
+	if portsJSON := args["ports"]; portsJSON != "" {
+		var ports map[string]string
+		if err := json.Unmarshal([]byte(portsJSON), &ports); err != nil {
+			return "", fmt.Errorf("invalid ports JSON: %w", err)
+		}
+		cfg.Ports = ports
+	}
+
+	containerID, output, err := RunContainer(ctx, cfg)
 	if err != nil {
 		return "", err
 	}
 
 	result := map[string]interface{}{
-		"success":  true,
-		"image":    image,
-		"detached": detach,
-		"output":   strings.TrimSpace(output),
+		"success":      true,
+		"image":        imageName,
+		"container_id": containerID,
+		"detached":     cfg.Detach,
 	}
 
-	if detach {
-		result["container_id"] = strings.TrimSpace(output)
+	if !cfg.Detach {
+		result["output"] = strings.TrimSpace(output)
 	}
 
 	data, _ := json.Marshal(result)
@@ -238,8 +204,8 @@ func handleRun(ctx context.Context, args map[string]string) (string, error) {
 }
 
 func handleExec(ctx context.Context, args map[string]string) (string, error) {
-	container := args["container"]
-	if container == "" {
+	containerID := args["container"]
+	if containerID == "" {
 		return "", fmt.Errorf("container is required")
 	}
 
@@ -257,19 +223,14 @@ func handleExec(ctx context.Context, args map[string]string) (string, error) {
 		return "", fmt.Errorf("command cannot be empty")
 	}
 
-	if err := ensureRunning(); err != nil {
-		return "", fmt.Errorf("failed to start sandbox: %w", err)
-	}
-
-	dockerArgs := append([]string{"exec", container}, cmd...)
-	output, err := runDockerCommand(ctx, dockerArgs...)
+	output, err := ExecInContainer(ctx, containerID, cmd)
 	if err != nil {
 		return "", err
 	}
 
 	result := map[string]interface{}{
 		"success":   true,
-		"container": container,
+		"container": containerID,
 		"output":    output,
 	}
 	data, _ := json.Marshal(result)
@@ -277,159 +238,132 @@ func handleExec(ctx context.Context, args map[string]string) (string, error) {
 }
 
 func handleImages(ctx context.Context, args map[string]string) (string, error) {
-	if err := ensureRunning(); err != nil {
-		return "", fmt.Errorf("failed to start sandbox: %w", err)
-	}
-
-	dockerArgs := []string{"images", "--format", "{{json .}}"}
-
-	if filter := args["filter"]; filter != "" {
-		dockerArgs = append(dockerArgs, "--filter", "reference="+filter)
-	}
-
-	output, err := runDockerCommand(ctx, dockerArgs...)
+	images, err := ListImages(ctx, args["filter"])
 	if err != nil {
 		return "", err
 	}
 
-	// Parse JSON lines output
-	var images []map[string]interface{}
-	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
-		if line == "" {
-			continue
-		}
-		var img map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &img); err == nil {
-			images = append(images, img)
-		}
+	// Convert to simpler format
+	type imageInfo struct {
+		ID      string   `json:"id"`
+		Tags    []string `json:"tags"`
+		Size    int64    `json:"size"`
+		Created int64    `json:"created"`
+	}
+
+	var imageList []imageInfo
+	for _, img := range images {
+		imageList = append(imageList, imageInfo{
+			ID:      img.ID,
+			Tags:    img.RepoTags,
+			Size:    img.Size,
+			Created: img.Created,
+		})
 	}
 
 	result := map[string]interface{}{
 		"success": true,
-		"count":   len(images),
-		"images":  images,
+		"count":   len(imageList),
+		"images":  imageList,
 	}
 	data, _ := json.Marshal(result)
 	return string(data), nil
 }
 
 func handlePs(ctx context.Context, args map[string]string) (string, error) {
-	if err := ensureRunning(); err != nil {
-		return "", fmt.Errorf("failed to start sandbox: %w", err)
-	}
-
-	dockerArgs := []string{"ps", "--format", "{{json .}}"}
-
-	if args["all"] == "true" {
-		dockerArgs = append(dockerArgs, "-a")
-	}
-
-	output, err := runDockerCommand(ctx, dockerArgs...)
+	containers, err := ListContainers(ctx, args["all"] == "true")
 	if err != nil {
 		return "", err
 	}
 
-	// Parse JSON lines output
-	var containers []map[string]interface{}
-	for _, line := range strings.Split(strings.TrimSpace(output), "\n") {
-		if line == "" {
-			continue
-		}
-		var ctr map[string]interface{}
-		if err := json.Unmarshal([]byte(line), &ctr); err == nil {
-			containers = append(containers, ctr)
-		}
+	// Convert to simpler format
+	type containerInfo struct {
+		ID      string   `json:"id"`
+		Names   []string `json:"names"`
+		Image   string   `json:"image"`
+		State   string   `json:"state"`
+		Status  string   `json:"status"`
+		Created int64    `json:"created"`
+	}
+
+	var containerList []containerInfo
+	for _, ctr := range containers {
+		containerList = append(containerList, containerInfo{
+			ID:      ctr.ID,
+			Names:   ctr.Names,
+			Image:   ctr.Image,
+			State:   ctr.State,
+			Status:  ctr.Status,
+			Created: ctr.Created,
+		})
 	}
 
 	result := map[string]interface{}{
 		"success":    true,
-		"count":      len(containers),
-		"containers": containers,
+		"count":      len(containerList),
+		"containers": containerList,
 	}
 	data, _ := json.Marshal(result)
 	return string(data), nil
 }
 
 func handleLogs(ctx context.Context, args map[string]string) (string, error) {
-	container := args["container"]
-	if container == "" {
+	containerID := args["container"]
+	if containerID == "" {
 		return "", fmt.Errorf("container is required")
 	}
 
-	if err := ensureRunning(); err != nil {
-		return "", fmt.Errorf("failed to start sandbox: %w", err)
-	}
-
-	dockerArgs := []string{"logs", container}
-
-	if tail := args["tail"]; tail != "" {
-		dockerArgs = append(dockerArgs, "--tail", tail)
-	}
-
-	output, err := runDockerCommand(ctx, dockerArgs...)
+	logs, err := GetContainerLogs(ctx, containerID, args["tail"])
 	if err != nil {
 		return "", err
 	}
 
 	result := map[string]interface{}{
 		"success":   true,
-		"container": container,
-		"logs":      output,
+		"container": containerID,
+		"logs":      logs,
 	}
 	data, _ := json.Marshal(result)
 	return string(data), nil
 }
 
 func handleStop(ctx context.Context, args map[string]string) (string, error) {
-	container := args["container"]
-	if container == "" {
+	containerID := args["container"]
+	if containerID == "" {
 		return "", fmt.Errorf("container is required")
 	}
 
-	if err := ensureRunning(); err != nil {
-		return "", fmt.Errorf("failed to start sandbox: %w", err)
-	}
-
-	output, err := runDockerCommand(ctx, "stop", container)
-	if err != nil {
+	if err := StopContainer(ctx, containerID); err != nil {
 		return "", err
 	}
 
 	result := map[string]interface{}{
 		"success":   true,
-		"container": container,
-		"output":    strings.TrimSpace(output),
+		"container": containerID,
 	}
 	data, _ := json.Marshal(result)
 	return string(data), nil
 }
 
 func handleRm(ctx context.Context, args map[string]string) (string, error) {
-	container := args["container"]
-	if container == "" {
+	containerID := args["container"]
+	if containerID == "" {
 		return "", fmt.Errorf("container is required")
 	}
 
-	if err := ensureRunning(); err != nil {
-		return "", fmt.Errorf("failed to start sandbox: %w", err)
-	}
-
-	dockerArgs := []string{"rm", container}
-
-	if args["force"] == "true" {
-		dockerArgs = append(dockerArgs, "-f")
-	}
-
-	output, err := runDockerCommand(ctx, dockerArgs...)
-	if err != nil {
+	if err := RemoveContainer(ctx, containerID, args["force"] == "true"); err != nil {
 		return "", err
 	}
 
 	result := map[string]interface{}{
 		"success":   true,
-		"container": container,
-		"output":    strings.TrimSpace(output),
+		"container": containerID,
 	}
 	data, _ := json.Marshal(result)
 	return string(data), nil
+}
+
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
 }
